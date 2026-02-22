@@ -27,7 +27,7 @@ export function useParticleNetwork(
       instance.cleanup();
       instanceRef.current = null;
     };
-  }, []);
+  }, [config]);
 
   return canvasRef;
 }
