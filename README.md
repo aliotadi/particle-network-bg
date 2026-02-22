@@ -8,8 +8,8 @@ Interactive particle network animation for backgrounds. Typed, zero dependencies
 
 Live demos (after enabling [GitHub Pages](https://docs.github.com/en/pages)):
 
-- **[Vanilla JS](https://YOUR_USERNAME.github.io/particle-network-bg/vanilla/)**
-- **[React](https://YOUR_USERNAME.github.io/particle-network-bg/react/)**
+- **[Vanilla JS](https://aliotadi.github.io/particle-network-bg/vanilla/)**
+- **[React](https://aliotadi.github.io/particle-network-bg/react/)**
 
 Run locally:
 
@@ -92,38 +92,38 @@ function App() {
 
 ## Configuration
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `particleCount` | number | 100 | Number of particles |
-| `minRadius` | number | 2 | Min particle size (px) |
-| `maxRadius` | number | 6 | Max particle size (px) |
-| `particleColor` | string | `#000000` | Particle color (hex) |
-| `lineColor` | string | `#000000` | Connection line color (hex) |
-| `lineWidth` | number | 1 | Line width |
-| `lineOpacity` | number | 0.2 | Line opacity (0–1) |
-| `maxDistance` | number | 150 | Max connection distance (px) |
-| `moveSpeed` | number | 1 | Particle movement speed |
-| `backgroundColor` | string | `#ffffff` | Background color (hex) |
-| `backgroundOpacity` | number | 1 | Background opacity (0–1) |
-| `particleOpacity` | number | 1 | Particle opacity (0–1) |
-| `mouseRadius` | number | 200 | Mouse interaction radius |
-| `mouseInteraction` | boolean | true | Enable mouse repel effect |
-| `pulseEnabled` | boolean | true | Enable pulse animation |
-| `pulseSpeed` | number | 0 | Pulse speed |
-| `depthEffectEnabled` | boolean | true | 3D depth effect |
-| `depthSpeed` | number | 0.02 | Depth animation speed |
-| `gradientEnabled` | boolean | false | Use gradient background |
-| `gradientType` | `"linear" \| "radial"` | `"linear"` | Gradient type |
-| `gradientColors` | string[] | `["#667eea", "#764ba2"]` | Gradient colors (hex) |
-| `gradientStops` | number[] | auto | Color stops (0–1), optional |
-| `gradientSpeed` | number | 0.02 | Gradient animation speed |
-| `gradientMouseReaction` | boolean | true | **Radial only:** Gradient center follows mouse |
-| `gradientMouseInfluence` | number | 0.5 | **Radial only:** Mouse influence strength (0–1) |
-| `gradientAngle` | number | 0 | **Linear spin mode:** Initial rotation angle (degrees) |
-| `gradientRadius` | number | 1 | **Radial:** Gradient radius multiplier |
-| `gradientSpin` | boolean | false | **Linear:** `true` = rotate, `false` = flow continuously |
-| `gradientFlowAngle` | number | 45 | **Linear flow mode:** Direction of color flow (degrees) |
-| `gradientOrbitRadius` | number | 0.3 | **Radial:** Orbit radius for center movement (0–1) |
+| Option                   | Type                   | Default                  | Description                                              |
+| ------------------------ | ---------------------- | ------------------------ | -------------------------------------------------------- |
+| `particleCount`          | number                 | 100                      | Number of particles                                      |
+| `minRadius`              | number                 | 2                        | Min particle size (px)                                   |
+| `maxRadius`              | number                 | 6                        | Max particle size (px)                                   |
+| `particleColor`          | string                 | `#000000`                | Particle color (hex)                                     |
+| `lineColor`              | string                 | `#000000`                | Connection line color (hex)                              |
+| `lineWidth`              | number                 | 1                        | Line width                                               |
+| `lineOpacity`            | number                 | 0.2                      | Line opacity (0–1)                                       |
+| `maxDistance`            | number                 | 150                      | Max connection distance (px)                             |
+| `moveSpeed`              | number                 | 1                        | Particle movement speed                                  |
+| `backgroundColor`        | string                 | `#ffffff`                | Background color (hex)                                   |
+| `backgroundOpacity`      | number                 | 1                        | Background opacity (0–1)                                 |
+| `particleOpacity`        | number                 | 1                        | Particle opacity (0–1)                                   |
+| `mouseRadius`            | number                 | 200                      | Mouse interaction radius                                 |
+| `mouseInteraction`       | boolean                | true                     | Enable mouse repel effect                                |
+| `pulseEnabled`           | boolean                | true                     | Enable pulse animation                                   |
+| `pulseSpeed`             | number                 | 0                        | Pulse speed                                              |
+| `depthEffectEnabled`     | boolean                | true                     | 3D depth effect                                          |
+| `depthSpeed`             | number                 | 0.02                     | Depth animation speed                                    |
+| `gradientEnabled`        | boolean                | false                    | Use gradient background                                  |
+| `gradientType`           | `"linear" \| "radial"` | `"linear"`               | Gradient type                                            |
+| `gradientColors`         | string[]               | `["#667eea", "#764ba2"]` | Gradient colors (hex)                                    |
+| `gradientStops`          | number[]               | auto                     | Color stops (0–1), optional                              |
+| `gradientSpeed`          | number                 | 0.02                     | Gradient animation speed                                 |
+| `gradientMouseReaction`  | boolean                | true                     | **Radial only:** Gradient center follows mouse           |
+| `gradientMouseInfluence` | number                 | 0.5                      | **Radial only:** Mouse influence strength (0–1)          |
+| `gradientAngle`          | number                 | 0                        | **Linear spin mode:** Initial rotation angle (degrees)   |
+| `gradientRadius`         | number                 | 1                        | **Radial:** Gradient radius multiplier                   |
+| `gradientSpin`           | boolean                | false                    | **Linear:** `true` = rotate, `false` = flow continuously |
+| `gradientFlowAngle`      | number                 | 45                       | **Linear flow mode:** Direction of color flow (degrees)  |
+| `gradientOrbitRadius`    | number                 | 0.3                      | **Radial:** Orbit radius for center movement (0–1)       |
 
 ## Gradient Examples
 
@@ -135,8 +135,8 @@ new ParticleNetwork(canvas, {
   gradientType: "linear",
   gradientColors: ["#667eea", "#764ba2", "#f093fb"],
   gradientSpeed: 0.02,
-  gradientSpin: false,          // Flow mode (colors slide continuously)
-  gradientFlowAngle: 45,        // Flow direction in degrees
+  gradientSpin: false, // Flow mode (colors slide continuously)
+  gradientFlowAngle: 45, // Flow direction in degrees
 });
 ```
 
@@ -148,8 +148,8 @@ new ParticleNetwork(canvas, {
   gradientType: "linear",
   gradientColors: ["#667eea", "#764ba2"],
   gradientSpeed: 0.01,
-  gradientSpin: true,           // Rotate the gradient angle
-  gradientAngle: 0,             // Starting angle
+  gradientSpin: true, // Rotate the gradient angle
+  gradientAngle: 0, // Starting angle
 });
 ```
 
@@ -161,9 +161,9 @@ new ParticleNetwork(canvas, {
   gradientType: "radial",
   gradientColors: ["#667eea", "#764ba2", "#f093fb"],
   gradientSpeed: 0.02,
-  gradientMouseReaction: true,  // Center follows mouse
-  gradientMouseInfluence: 0.5,  // 0 = no effect, 1 = full follow
-  gradientOrbitRadius: 0.3,     // Orbit radius when no mouse
+  gradientMouseReaction: true, // Center follows mouse
+  gradientMouseInfluence: 0.5, // 0 = no effect, 1 = full follow
+  gradientOrbitRadius: 0.3, // Orbit radius when no mouse
 });
 ```
 
@@ -195,3 +195,4 @@ import type {
 ## License
 
 MIT
+
