@@ -32,6 +32,8 @@ export interface ParticleNetworkConfig {
   gradientSpin: boolean;
   gradientFlowAngle: number;
   gradientOrbitRadius: number;
+  gradientDithering: boolean;
+  gradientSmoothStops: number;
 }
 
 export interface Particle {
@@ -75,9 +77,50 @@ const DEFAULT_CONFIG: ParticleNetworkConfig = {
   gradientSpin: false,
   gradientFlowAngle: 45,
   gradientOrbitRadius: 0.3,
+  gradientDithering: true,
+  gradientSmoothStops: 4,
 };
 
 const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
+
+function lerpHex(c1: string, c2: string, t: number): string {
+  const r1 = parseInt(c1.slice(1, 3), 16);
+  const g1 = parseInt(c1.slice(3, 5), 16);
+  const b1 = parseInt(c1.slice(5, 7), 16);
+  const r2 = parseInt(c2.slice(1, 3), 16);
+  const g2 = parseInt(c2.slice(3, 5), 16);
+  const b2 = parseInt(c2.slice(5, 7), 16);
+  const r = Math.round(r1 + (r2 - r1) * t);
+  const g = Math.round(g1 + (g2 - g1) * t);
+  const b = Math.round(b1 + (b2 - b1) * t);
+  return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+function interpolateColorStops(
+  colors: string[],
+  stops: number[],
+  segmentsPerGap: number
+): { colors: string[]; stops: number[] } {
+  if (segmentsPerGap <= 0 || colors.length < 2) {
+    return { colors: [...colors], stops: [...stops] };
+  }
+  const outColors: string[] = [];
+  const outStops: number[] = [];
+  for (let i = 0; i < colors.length - 1; i++) {
+    const s0 = stops[i];
+    const s1 = stops[i + 1];
+    outColors.push(colors[i]);
+    outStops.push(s0);
+    for (let j = 1; j <= segmentsPerGap; j++) {
+      const t = j / (segmentsPerGap + 1);
+      outColors.push(lerpHex(colors[i], colors[i + 1], t));
+      outStops.push(s0 + (s1 - s0) * t);
+    }
+  }
+  outColors.push(colors[colors.length - 1]);
+  outStops.push(stops[stops.length - 1]);
+  return { colors: outColors, stops: outStops };
+}
 
 export class ParticleNetwork {
   private canvas: HTMLCanvasElement;
@@ -92,6 +135,7 @@ export class ParticleNetwork {
   private gradientFlowOffset = 0;
   private gradientCenter = { x: 0, y: 0 };
   private smoothedMouseAngle = 0;
+  private gradientDiv: HTMLDivElement | null = null;
   private boundHandleResize: () => void;
   private boundHandleMouseMove: (e: MouseEvent) => void;
   private boundHandleMouseLeave: () => void;
@@ -106,6 +150,8 @@ export class ParticleNetwork {
 
     this.config = this.validateConfig({ ...DEFAULT_CONFIG, ...config });
 
+    this.createGradientDiv();
+
     this.boundHandleResize = this.handleResize.bind(this);
     this.boundHandleMouseMove = this.handleMouseMove.bind(this);
     this.boundHandleMouseLeave = this.handleMouseLeave.bind(this);
@@ -113,6 +159,13 @@ export class ParticleNetwork {
     this.handleResize();
     this.createParticles();
     this.setupEventListeners();
+  }
+
+  private createGradientDiv(): void {
+    this.gradientDiv = document.createElement("div");
+    this.gradientDiv.style.cssText =
+      "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1;";
+    this.canvas.parentElement?.insertBefore(this.gradientDiv, this.canvas);
   }
 
   private validateConfig(config: ParticleNetworkConfig): ParticleNetworkConfig {
@@ -135,6 +188,7 @@ export class ParticleNetwork {
       "gradientRadius",
       "gradientFlowAngle",
       "gradientOrbitRadius",
+      "gradientSmoothStops",
     ];
     for (const param of numericParams) {
       const val = config[param];
@@ -150,6 +204,7 @@ export class ParticleNetwork {
       "gradientEnabled",
       "gradientMouseReaction",
       "gradientSpin",
+      "gradientDithering",
     ];
     for (const param of booleanParams) {
       if (typeof config[param] !== "boolean") {
@@ -216,6 +271,8 @@ export class ParticleNetwork {
     window.removeEventListener("resize", this.boundHandleResize);
     this.canvas.removeEventListener("mousemove", this.boundHandleMouseMove);
     this.canvas.removeEventListener("mouseleave", this.boundHandleMouseLeave);
+    this.gradientDiv?.remove();
+    this.gradientDiv = null;
     this.stop();
   }
 
@@ -363,114 +420,72 @@ export class ParticleNetwork {
   }
 
   private drawBackground(): void {
-    this.ctx.globalAlpha = this.config.backgroundOpacity;
+    if (this.config.gradientEnabled && this.gradientDiv) {
+      this.gradientDiv.style.display = "";
+      this.gradientDiv.style.opacity = String(this.config.backgroundOpacity);
+      this.updateGradientCSS();
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    } else {
+      if (this.gradientDiv) this.gradientDiv.style.display = "none";
+      this.ctx.globalAlpha = this.config.backgroundOpacity;
+      this.ctx.fillStyle = this.config.backgroundColor;
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.globalAlpha = 1;
+    }
+  }
 
-    if (this.config.gradientEnabled) {
-      const w = this.canvas.width;
-      const h = this.canvas.height;
-      const colors = this.config.gradientColors;
-      const stops =
-        this.config.gradientStops ??
-        colors.map((_, i) => i / (colors.length - 1));
+  private updateGradientCSS(): void {
+    if (!this.gradientDiv) return;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const colors = this.config.gradientColors;
 
-      // Update gradient angle (linear) or center (radial) for animation + mouse
-      if (this.config.gradientType === "linear") {
-        const baseAngleRad = (this.config.gradientFlowAngle * Math.PI) / 180;
-        const diag = Math.sqrt(w * w + h * h);
-
-        let angle: number;
-        let offsetX = 0;
-        let offsetY = 0;
-
-        if (this.config.gradientSpin) {
-          this.gradientAngle += this.config.gradientSpeed;
-          angle = this.gradientAngle;
-        } else {
-          this.gradientFlowOffset = (this.gradientFlowOffset + this.config.gradientSpeed) % (Math.PI * 2);
-          const t = this.gradientFlowOffset / (Math.PI * 2);
-          offsetX = Math.cos(baseAngleRad) * t * diag;
-          offsetY = Math.sin(baseAngleRad) * t * diag;
-          angle = baseAngleRad;
-        }
-
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        const lineLen = this.config.gradientSpin ? diag / 2 : diag * 1.5;
-        const cx = w / 2 + offsetX;
-        const cy = h / 2 + offsetY;
-        const x1 = cx - cos * lineLen;
-        const y1 = cy - sin * lineLen;
-        const x2 = cx + cos * lineLen;
-        const y2 = cy + sin * lineLen;
-        const gradient = this.ctx.createLinearGradient(x1, y1, x2, y2);
-        if (this.config.gradientSpin) {
-          colors.forEach((c, i) => gradient.addColorStop(stops[i], c));
-        } else {
-          const extColors = [...colors, colors[0]];
-          for (let rep = 0; rep < 3; rep++) {
-            extColors.forEach((c, i) => {
-              gradient.addColorStop((rep + i / (extColors.length - 1)) / 3, c);
-            });
-          }
-        }
-        this.ctx.fillStyle = gradient;
-      } else {
-        const cx = w / 2;
-        const cy = h / 2;
-        const orbitR = Math.min(w, h) * this.config.gradientOrbitRadius;
-
-        let targetX: number;
-        let targetY: number;
-
+    if (this.config.gradientType === "linear") {
+      if (this.config.gradientSpin) {
         this.gradientAngle += this.config.gradientSpeed;
-        targetX = cx + Math.cos(this.gradientAngle) * orbitR;
-        targetY = cy + Math.sin(this.gradientAngle) * orbitR;
+        const deg = (this.gradientAngle * 180) / Math.PI;
+        this.gradientDiv.style.background =
+          `linear-gradient(${deg}deg, ${colors.join(", ")})`;
+        this.gradientDiv.style.backgroundSize = "";
+        this.gradientDiv.style.backgroundPosition = "";
+      } else {
+        const angle = this.config.gradientFlowAngle;
+        const cycle = [...colors, ...colors, ...colors, colors[0]];
+        this.gradientDiv.style.background =
+          `linear-gradient(${angle}deg, ${cycle.join(", ")})`;
+        this.gradientDiv.style.backgroundSize = "300% 300%";
 
-        if (this.config.gradientMouseReaction && this.mousePosition) {
-          const influence = this.config.gradientMouseInfluence;
-          targetX = targetX + (this.mousePosition.x - targetX) * influence;
-          targetY = targetY + (this.mousePosition.y - targetY) * influence;
-        }
-
-        const lerpFactor = 0.03;
-        this.gradientCenter.x += (targetX - this.gradientCenter.x) * lerpFactor;
-        this.gradientCenter.y += (targetY - this.gradientCenter.y) * lerpFactor;
-
-        this.gradientFlowOffset = (this.gradientFlowOffset + this.config.gradientSpeed) % (Math.PI * 2);
-        const t = this.gradientFlowOffset / (Math.PI * 2);
-        const r = Math.max(w, h) * this.config.gradientRadius * 2;
-        const gradient = this.ctx.createRadialGradient(
-          this.gradientCenter.x,
-          this.gradientCenter.y,
-          0,
-          this.gradientCenter.x,
-          this.gradientCenter.y,
-          r
-        );
-        const extColors = [...colors, colors[0]];
-        const entries: { stop: number; color: string }[] = [];
-        for (let rep = 0; rep < 3; rep++) {
-          extColors.forEach((c, i) => {
-            const base = (rep + i / (extColors.length - 1)) / 3;
-            entries.push({ stop: (base + t) % 1, color: c });
-          });
-        }
-        entries.sort((a, b) => a.stop - b.stop);
-        if (entries[0].stop > 0.001) {
-          entries.unshift({ stop: 0, color: entries[entries.length - 1].color });
-        }
-        if (entries[entries.length - 1].stop < 0.999) {
-          entries.push({ stop: 1, color: entries[0].color });
-        }
-        entries.forEach((e) => gradient.addColorStop(e.stop, e.color));
-        this.ctx.fillStyle = gradient;
+        this.gradientFlowOffset = (this.gradientFlowOffset + this.config.gradientSpeed * 0.5) % 100;
+        const pct = this.gradientFlowOffset;
+        this.gradientDiv.style.backgroundPosition = `${pct}% ${pct}%`;
       }
     } else {
-      this.ctx.fillStyle = this.config.backgroundColor;
-    }
+      const cx = w / 2;
+      const cy = h / 2;
+      const orbitR = Math.min(w, h) * this.config.gradientOrbitRadius;
 
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.globalAlpha = 1;
+      this.gradientAngle += this.config.gradientSpeed;
+      let targetX = cx + Math.cos(this.gradientAngle) * orbitR;
+      let targetY = cy + Math.sin(this.gradientAngle) * orbitR;
+
+      if (this.config.gradientMouseReaction && this.mousePosition) {
+        const influence = this.config.gradientMouseInfluence;
+        targetX += (this.mousePosition.x - targetX) * influence;
+        targetY += (this.mousePosition.y - targetY) * influence;
+      }
+
+      this.gradientCenter.x += (targetX - this.gradientCenter.x) * 0.03;
+      this.gradientCenter.y += (targetY - this.gradientCenter.y) * 0.03;
+
+      const r = Math.max(w, h) * this.config.gradientRadius;
+      const cycle = [...colors, ...colors, colors[0]];
+      const step = (r * 2) / (cycle.length - 1);
+      const stops = cycle.map((c, i) => `${c} ${i * step}px`).join(", ");
+      this.gradientDiv.style.background =
+        `radial-gradient(circle at ${this.gradientCenter.x}px ${this.gradientCenter.y}px, ${stops})`;
+      this.gradientDiv.style.backgroundSize = "";
+      this.gradientDiv.style.backgroundPosition = "";
+    }
   }
 
   private hexToRgb(hex: string): string {

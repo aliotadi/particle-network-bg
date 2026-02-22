@@ -88,7 +88,7 @@ function App() {
 }
 ```
 
-> **Note:** Config is applied on mount. The canvas resizes to the window.
+> **Note:** Config is applied on mount. The canvas resizes to the window. When gradients are enabled, a background `<div>` is automatically created behind the canvas for smooth CSS-based gradient rendering.
 
 ## Configuration
 
@@ -124,8 +124,12 @@ function App() {
 | `gradientSpin`           | boolean   | false                    | **Linear:** `true` = rotate, `false` = flow continuously |
 | `gradientFlowAngle`      | number    | 45                       | **Linear flow mode:** Direction of color flow (degrees)  |
 | `gradientOrbitRadius`    | number    | 0.3                      | **Radial:** Orbit radius for center movement (0–1)       |
+| `gradientDithering`      | boolean   | true                     | *(Deprecated)* No longer used with CSS gradients          |
+| `gradientSmoothStops`    | number    | 4                        | *(Deprecated)* No longer used with CSS gradients          |
 
 ## Gradient Examples
+
+Gradients are rendered via CSS (not canvas) for smooth, band-free appearance. A background `<div>` is automatically created behind the canvas.
 
 ### Linear Gradient (Continuous Flow)
 

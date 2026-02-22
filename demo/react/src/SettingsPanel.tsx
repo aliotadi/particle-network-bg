@@ -35,6 +35,8 @@ const DEFAULT_CONFIG: Partial<ParticleNetworkConfig> = {
   gradientMouseReaction: true,
   gradientMouseInfluence: 0.5,
   gradientSpin: false,
+  gradientDithering: true,
+  gradientSmoothStops: 4,
   gradientFlowAngle: 45,
   gradientOrbitRadius: 0.3,
 };
@@ -73,7 +75,17 @@ export function SettingsPanel({
           borderBottom: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 500, color: "rgba(255,255,255,0.9)", letterSpacing: "0.02em" }}>Settings</h2>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: "1rem",
+            fontWeight: 500,
+            color: "rgba(255,255,255,0.9)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          Settings
+        </h2>
         <button
           onClick={onClose}
           style={{
@@ -222,6 +234,11 @@ export function SettingsPanel({
             checked={config.gradientSpin ?? false}
             onChange={(v) => onConfigChange("gradientSpin", v)}
           />
+          <Toggle
+            label="Smooth gradient (dithering)"
+            checked={config.gradientDithering ?? true}
+            onChange={(v) => onConfigChange("gradientDithering", v)}
+          />
           <Slider
             label="Flow Angle"
             value={config.gradientFlowAngle ?? 45}
@@ -235,21 +252,24 @@ export function SettingsPanel({
             <select
               value={config.gradientType ?? "linear"}
               onChange={(e) =>
-                onConfigChange("gradientType", e.target.value as "linear" | "radial")
+                onConfigChange(
+                  "gradientType",
+                  e.target.value as "linear" | "radial",
+                )
               }
-            style={{
-              width: "100%",
-              padding: "10px 36px 10px 12px",
-              background: "rgba(30, 30, 40, 0.95)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 8,
-              color: "#fff",
-              appearance: "none",
-              WebkitAppearance: "none",
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a1a1aa' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 12px center",
-            }}
+              style={{
+                width: "100%",
+                padding: "10px 36px 10px 12px",
+                background: "rgba(30, 30, 40, 0.95)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 8,
+                color: "#fff",
+                appearance: "none",
+                WebkitAppearance: "none",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a1a1aa' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+              }}
             >
               <option value="linear">Linear</option>
               <option value="radial">Radial</option>
@@ -264,7 +284,13 @@ export function SettingsPanel({
                   type="color"
                   value={config.gradientColors?.[i] ?? "#667eea"}
                   onChange={(e) => {
-                    const colors = [...(config.gradientColors ?? ["#667eea", "#764ba2", "#f093fb"])];
+                    const colors = [
+                      ...(config.gradientColors ?? [
+                        "#667eea",
+                        "#764ba2",
+                        "#f093fb",
+                      ]),
+                    ];
                     colors[i] = e.target.value;
                     onConfigChange("gradientColors", colors);
                   }}
@@ -287,6 +313,13 @@ export function SettingsPanel({
             max={0.1}
             step={0.001}
             onChange={(v) => onConfigChange("gradientSpeed", v)}
+          />
+          <Slider
+            label="Smooth Stops"
+            value={config.gradientSmoothStops ?? 4}
+            min={0}
+            max={20}
+            onChange={(v) => onConfigChange("gradientSmoothStops", v)}
           />
           {config.gradientType === "radial" && (
             <Slider
@@ -313,7 +346,7 @@ export function SettingsPanel({
         <button
           onClick={() => {
             Object.entries(DEFAULT_CONFIG).forEach(([k, v]) =>
-              onConfigChange(k as keyof ParticleNetworkConfig, v as never)
+              onConfigChange(k as keyof ParticleNetworkConfig, v as never),
             );
           }}
           style={btnStyle}
@@ -323,7 +356,11 @@ export function SettingsPanel({
         <button
           onClick={() => {
             const count = Math.floor(Math.random() * 200) + 50;
-            const c = "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+            const c =
+              "#" +
+              Math.floor(Math.random() * 16777215)
+                .toString(16)
+                .padStart(6, "0");
             onConfigChange("particleCount", count);
             onConfigChange("particleColor", c);
             onConfigChange("lineColor", c);
@@ -337,13 +374,23 @@ export function SettingsPanel({
             onConfigChange("lineOpacity", Math.random() * 0.8 + 0.1);
             onConfigChange("particleOpacity", Math.random() * 0.5 + 0.5);
           }}
-          style={{ ...btnStyle, background: "#6366f1", color: "#fff", borderColor: "#6366f1" }}
+          style={{
+            ...btnStyle,
+            background: "#6366f1",
+            color: "#fff",
+            borderColor: "#6366f1",
+          }}
         >
           Randomize
         </button>
         <button
           onClick={onCopyJson}
-          style={{ ...btnStyle, background: "rgba(34, 197, 94, 0.2)", color: "#22c55e", borderColor: "rgba(34, 197, 94, 0.3)" }}
+          style={{
+            ...btnStyle,
+            background: "rgba(34, 197, 94, 0.2)",
+            color: "#22c55e",
+            borderColor: "rgba(34, 197, 94, 0.3)",
+          }}
         >
           {copyFeedback ? "Copied!" : "Copy JSON"}
         </button>
@@ -379,7 +426,16 @@ function ControlGroup({
 }) {
   return (
     <div style={{ marginBottom: 24 }}>
-      <h3 style={{ fontSize: "0.7rem", fontWeight: 600, margin: "0 0 12px 0", color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+      <h3
+        style={{
+          fontSize: "0.7rem",
+          fontWeight: 600,
+          margin: "0 0 12px 0",
+          color: "rgba(255,255,255,0.5)",
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+        }}
+      >
         {title}
       </h3>
       {children}
@@ -408,7 +464,16 @@ function Slider({
   return (
     <div style={{ marginBottom: "1rem" }}>
       <label style={labelStyle}>
-        {label} <span style={{ float: "right", color: "rgba(255,255,255,0.5)", fontSize: "0.75rem" }}>{display}</span>
+        {label}{" "}
+        <span
+          style={{
+            float: "right",
+            color: "rgba(255,255,255,0.5)",
+            fontSize: "0.75rem",
+          }}
+        >
+          {display}
+        </span>
       </label>
       <input
         type="range"
@@ -444,7 +509,13 @@ function DualSlider({
     <div style={{ marginBottom: "1rem" }}>
       <label style={labelStyle}>
         {label}{" "}
-        <span style={{ float: "right", color: "rgba(255,255,255,0.5)", fontSize: "0.75rem" }}>
+        <span
+          style={{
+            float: "right",
+            color: "rgba(255,255,255,0.5)",
+            fontSize: "0.75rem",
+          }}
+        >
           {minVal} - {maxVal}
         </span>
       </label>
@@ -525,7 +596,13 @@ function ColorControl({
       <div style={{ marginBottom: "1rem" }}>
         <label style={labelStyle}>
           Opacity{" "}
-          <span style={{ float: "right", color: "rgba(255,255,255,0.5)", fontSize: "0.75rem" }}>
+          <span
+            style={{
+              float: "right",
+              color: "rgba(255,255,255,0.5)",
+              fontSize: "0.75rem",
+            }}
+          >
             {Math.round(opacity * 100)}%
           </span>
         </label>
@@ -571,7 +648,9 @@ function Toggle({
           accentColor: "#6366f1",
         }}
       />
-      <span style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.9)" }}>{label}</span>
+      <span style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.9)" }}>
+        {label}
+      </span>
     </label>
   );
 }
@@ -591,3 +670,4 @@ function CloseIcon() {
     </svg>
   );
 }
+

@@ -33,6 +33,8 @@ const DEFAULT_CONFIG: Partial<ParticleNetworkConfig> = {
   gradientAngle: 0,
   gradientRadius: 1,
   gradientSpin: false,
+  gradientDithering: true,
+  gradientSmoothStops: 4,
   gradientFlowAngle: 45,
   gradientOrbitRadius: 0.3,
 };
