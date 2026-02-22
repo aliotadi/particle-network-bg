@@ -1,6 +1,6 @@
 {
   "name": "particle-network-bg",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Interactive particle network animation for backgrounds",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -56,4 +56,3 @@
     "typescript": "^5.0.0"
   }
 }
-
