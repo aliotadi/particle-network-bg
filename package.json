@@ -1,10 +1,27 @@
 {
   "name": "particle-network-bg",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Interactive particle network animation for backgrounds",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aliotadi/particle-network-bg.git"
+  },
+  "homepage": "https://aliotadi.github.io/particle-network-bg/",
+  "bugs": {
+    "url": "https://github.com/aliotadi/particle-network-bg/issues"
+  },
+  "keywords": [
+    "particle",
+    "canvas",
+    "animation",
+    "background",
+    "network",
+    "react"
+  ],
+  "license": "MIT",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -30,7 +47,8 @@
   ],
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
@@ -38,3 +56,4 @@
     "typescript": "^5.0.0"
   }
 }
+
