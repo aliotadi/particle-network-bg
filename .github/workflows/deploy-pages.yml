@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install and build lib
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build vanilla demo
+        run: |
+          cd demo/vanilla
+          npm ci
+          npm run build
+
+      - name: Build react demo
+        run: |
+          cd demo/react
+          npm ci
+          npm run build
+
+      - name: Prepare deploy folder
+        run: |
+          mkdir -p deploy
+          cp -r demo/vanilla/dist deploy/vanilla
+          cp -r demo/react/dist deploy/react
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy
+
