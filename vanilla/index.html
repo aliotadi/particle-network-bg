@@ -6,7 +6,7 @@
   <title>Particle Network – Vanilla Demo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/particle-network-bg/vanilla/assets/index-BOyux1DB.js"></script>
+  <script type="module" crossorigin src="/particle-network-bg/vanilla/assets/index-DBO2MVvD.js"></script>
   <link rel="stylesheet" crossorigin href="/particle-network-bg/vanilla/assets/index-BdXGmAY-.css">
 </head>
 <body style="background: #0f0f14">
@@ -147,6 +147,10 @@
             <input type="checkbox" id="gradientSpin">
             <span class="toggle-label">Spin (rotate)</span>
           </label>
+          <label class="toggle">
+            <input type="checkbox" id="gradientDithering" checked>
+            <span class="toggle-label">Smooth gradient (dithering)</span>
+          </label>
         </div>
         <div class="control-item">
           <label>Flow Angle <span class="value-display">45°</span></label>
@@ -170,6 +174,10 @@
         <div class="control-item">
           <label>Speed <span class="value-display">0.02</span></label>
           <input type="range" id="gradientSpeed" min="0.001" max="0.1" step="0.001" value="0.02">
+        </div>
+        <div class="control-item">
+          <label>Smooth Stops <span class="value-display">4</span></label>
+          <input type="range" id="gradientSmoothStops" min="0" max="20" value="4">
         </div>
         <div class="control-item" id="gradientMouseInfluenceRow" style="display:none">
           <label>Mouse Influence <span class="value-display">0.5</span></label>
