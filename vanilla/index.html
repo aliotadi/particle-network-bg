@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Particle Network – Vanilla Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/index-BOyux1DB.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BdXGmAY-.css">
+</head>
+<body style="background: #0f0f14">
+  <canvas id="canvas"></canvas>
+
+  <button class="control-toggle" id="controlToggle" aria-label="Toggle Controls" title="Settings">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  </button>
+
+  <div class="control-panel">
+    <div class="panel-header">
+      <h2>Settings</h2>
+      <button class="close-panel" aria-label="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="panel-content">
+      <div class="control-group">
+        <h3>Background</h3>
+        <div class="control-item">
+          <label>Color</label>
+          <div class="color-input-group">
+            <input type="color" id="backgroundColor" value="#0f0f14">
+            <input type="text" id="backgroundHex" value="#0f0f14" class="hex-input">
+          </div>
+        </div>
+        <div class="control-item">
+          <label>Opacity <span class="value-display">100%</span></label>
+          <input type="range" id="backgroundOpacity" min="0" max="100" value="100">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h3>Particles</h3>
+        <div class="control-item">
+          <label>Count <span class="value-display">100</span></label>
+          <input type="range" id="particleCount" min="10" max="300" value="100">
+        </div>
+        <div class="control-item">
+          <label>Speed <span class="value-display">1</span></label>
+          <input type="range" id="moveSpeed" min="0.1" max="2" step="0.001" value="1">
+        </div>
+        <div class="control-item">
+          <label>Size Range</label>
+          <div class="dual-slider">
+            <input type="range" id="minRadius" min="0.5" max="5" step="0.1" value="2">
+            <input type="range" id="maxRadius" min="2" max="10" step="0.1" value="6">
+            <div class="size-display">
+              <span class="value-display" data-for="minRadius">2</span> - <span class="value-display" data-for="maxRadius">6</span>
+            </div>
+          </div>
+        </div>
+        <div class="control-item">
+          <label>Color</label>
+          <div class="color-input-group">
+            <input type="color" id="particleColor" value="#a1a1aa">
+            <input type="text" id="particleHex" value="#a1a1aa" class="hex-input">
+          </div>
+        </div>
+        <div class="control-item">
+          <label>Opacity <span class="value-display">100%</span></label>
+          <input type="range" id="particleOpacity" min="0" max="100" value="100">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h3>Connections</h3>
+        <div class="control-item">
+          <label>Distance <span class="value-display">150</span></label>
+          <input type="range" id="maxDistance" min="50" max="300" value="150">
+        </div>
+        <div class="control-item">
+          <label>Width <span class="value-display">1</span></label>
+          <input type="range" id="lineWidth" min="0.5" max="5" step="0.5" value="1">
+        </div>
+        <div class="control-item">
+          <label>Color</label>
+          <div class="color-input-group">
+            <input type="color" id="lineColor" value="#71717a">
+            <input type="text" id="lineHex" value="#71717a" class="hex-input">
+          </div>
+        </div>
+        <div class="control-item">
+          <label>Opacity <span class="value-display">20%</span></label>
+          <input type="range" id="lineOpacity" min="0" max="100" value="20">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h3>Effects</h3>
+        <div class="control-item">
+          <label>Mouse Radius <span class="value-display">200</span></label>
+          <input type="range" id="mouseRadius" min="50" max="400" value="200">
+        </div>
+        <div class="control-item">
+          <label>Pulse Speed <span class="value-display">0%</span></label>
+          <input type="range" id="pulseSpeed" min="0" max="0.2" step="0.001" value="0">
+        </div>
+        <div class="control-item">
+          <label>Depth Speed <span class="value-display">0.02</span></label>
+          <input type="range" id="depthSpeed" min="0.005" max="0.08" step="0.001" value="0.02">
+        </div>
+        <div class="control-item toggles">
+          <label class="toggle">
+            <input type="checkbox" id="mouseInteraction" checked>
+            <span class="toggle-label">Mouse Interaction</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="pulseEnabled" checked>
+            <span class="toggle-label">Pulse Animation</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="depthEffectEnabled" checked>
+            <span class="toggle-label">3D Depth Effect</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h3>Gradient</h3>
+        <div class="control-item toggles">
+          <label class="toggle">
+            <input type="checkbox" id="gradientEnabled" checked>
+            <span class="toggle-label">Enable Gradient</span>
+          </label>
+          <label class="toggle" id="gradientMouseReactionRow" style="display:none">
+            <input type="checkbox" id="gradientMouseReaction" checked>
+            <span class="toggle-label">Mouse Reaction</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="gradientSpin">
+            <span class="toggle-label">Spin (rotate)</span>
+          </label>
+        </div>
+        <div class="control-item">
+          <label>Flow Angle <span class="value-display">45°</span></label>
+          <input type="range" id="gradientFlowAngle" min="0" max="360" value="45">
+        </div>
+        <div class="control-item">
+          <label>Type</label>
+          <select id="gradientType">
+            <option value="linear">Linear</option>
+            <option value="radial">Radial</option>
+          </select>
+        </div>
+        <div class="control-item">
+          <label>Colors</label>
+          <div class="gradient-colors">
+            <input type="color" id="gradientColor0" value="#667eea">
+            <input type="color" id="gradientColor1" value="#764ba2">
+            <input type="color" id="gradientColor2" value="#f093fb">
+          </div>
+        </div>
+        <div class="control-item">
+          <label>Speed <span class="value-display">0.02</span></label>
+          <input type="range" id="gradientSpeed" min="0.001" max="0.1" step="0.001" value="0.02">
+        </div>
+        <div class="control-item" id="gradientMouseInfluenceRow" style="display:none">
+          <label>Mouse Influence <span class="value-display">0.5</span></label>
+          <input type="range" id="gradientMouseInfluence" min="0" max="1" step="0.1" value="0.5">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-footer">
+      <button id="reset" class="btn">Reset</button>
+      <button id="randomize" class="btn btn-primary">Randomize</button>
+      <button id="copyJson" class="btn btn-copy">Copy JSON</button>
+    </div>
+  </div>
+
+</body>
+</html>
