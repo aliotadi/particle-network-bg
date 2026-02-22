@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: process.env.BASE || "/",
+  base: "/particle-network-bg/vanilla/",
 });
+
