@@ -227,8 +227,22 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 6px; }
 }
 .btn-copy:hover { background: rgba(34, 197, 94, 0.3); }
 
-.gradient-colors { display: flex; gap: 8px; flex-wrap: wrap; }
+.gradient-colors { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .gradient-colors input[type="color"] { width: 32px; height: 32px; }
+.gradient-color-item { display: flex; align-items: center; gap: 4px; }
+.gradient-color-remove {
+  width: 24px; height: 24px; padding: 0; border: none;
+  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6);
+  border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1;
+}
+.gradient-color-remove:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+.gradient-color-remove:disabled { opacity: 0.4; cursor: not-allowed; }
+.gradient-color-add {
+  width: 32px; height: 32px; padding: 0; border: 1px dashed rgba(255,255,255,0.2);
+  background: transparent; color: rgba(255,255,255,0.6);
+  border-radius: 8px; cursor: pointer; font-size: 18px; line-height: 1;
+}
+.gradient-color-add:hover { border-color: rgba(255,255,255,0.4); color: rgba(255,255,255,0.9); }
 
 .dual-slider input[type="range"] { margin-bottom: 6px; }
 .size-display { font-size: 0.75rem; color: var(--text-muted); }
@@ -255,3 +269,70 @@ select option {
   color: #fff;
   padding: 8px;
 }
+
+.control-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0 0 12px 0;
+}
+
+.btn-dashed {
+  width: 100%;
+  margin-top: 8px;
+  border-style: dashed;
+}
+
+.asset-entry {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.asset-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.asset-entry-source {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.asset-entry-mode {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.asset-entry-mode input[type="number"] {
+  width: 70px;
+  padding: 6px 8px;
+  background: rgba(30, 30, 40, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.8rem;
+}
+
+.asset-entry-mode input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.asset-remove {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.asset-remove:hover { color: rgba(255,255,255,0.7); }

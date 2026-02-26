@@ -1,5 +1,8 @@
 import { ParticleNetwork } from "particle-network-bg";
 
+const FA_ICONS = ["star", "heart", "circle", "bolt", "fire", "snowflake", "leaf", "sun", "moon", "cloud", "gem", "diamond", "crown", "music"];
+const FA_BASE = "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/svgs";
+
 const DEFAULT_CONFIG = {
   particleCount: 100,
   minRadius: 2,
@@ -14,6 +17,8 @@ const DEFAULT_CONFIG = {
   backgroundOpacity: 1,
   particleOpacity: 1,
   mouseRadius: 200,
+  minParticleDistance: 0,
+  minParticleForce: 0.5,
   mouseInteraction: true,
   pulseEnabled: true,
   pulseSpeed: 0,
@@ -144,11 +149,19 @@ function updateColor(colorInput, opacityInput, prop) {
   });
 });
 
+// mouseAttractPercentage
+document.getElementById("mouseAttractPercentage")?.addEventListener("input", (e) => {
+  const val = parseInt(e.target.value);
+  e.target.parentElement.querySelector(".value-display").textContent = val + "%";
+  network.updateConfig("mouseAttractPercentage", val);
+});
+
 // Numeric & checkbox inputs
 document.querySelectorAll("input").forEach((input) => {
   if (input.id.includes("Color") || input.id.includes("Hex") || input.id.includes("Opacity")) return;
   if (input.id.startsWith("gradientColor")) return;
   if (input.id === "gradientType") return;
+  if (input.id === "mouseAttractPercentage") return;
 
   input.addEventListener("input", (e) => {
     let val = e.target.value;
@@ -180,18 +193,303 @@ document.getElementById("gradientFlowAngle").addEventListener("input", (e) => {
   network.updateConfig("gradientFlowAngle", val);
 });
 
-// Gradient colors
-[0, 1, 2].forEach((i) => {
-  document.getElementById(`gradientColor${i}`).addEventListener("input", (e) => {
+// Gradient colors - dynamic add/remove
+function renderGradientColors() {
+  const container = document.getElementById("gradientColorsContainer");
+  const colors = network.config.gradientColors;
+  container.innerHTML = "";
+  colors.forEach((color, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "gradient-color-item";
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = color;
+    input.dataset.index = String(i);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "gradient-color-remove";
+    removeBtn.textContent = "−";
+    removeBtn.dataset.index = String(i);
+    removeBtn.disabled = colors.length <= 2;
+    removeBtn.setAttribute("aria-label", "Remove color");
+    wrap.appendChild(input);
+    wrap.appendChild(removeBtn);
+    container.appendChild(wrap);
+  });
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "gradient-color-add";
+  addBtn.textContent = "+";
+  addBtn.setAttribute("aria-label", "Add color");
+  container.appendChild(addBtn);
+}
+renderGradientColors();
+
+document.getElementById("gradientColorsContainer").addEventListener("input", (e) => {
+  if (e.target.type === "color" && e.target.dataset.index != null) {
+    const i = parseInt(e.target.dataset.index, 10);
     const colors = [...network.config.gradientColors];
     colors[i] = e.target.value;
-    if (colors.length < 3) colors.length = 3;
     network.updateConfig("gradientColors", colors);
+  }
+});
+document.getElementById("gradientColorsContainer").addEventListener("click", (e) => {
+  if (e.target.classList.contains("gradient-color-remove") && !e.target.disabled) {
+    const i = parseInt(e.target.dataset.index, 10);
+    const colors = [...network.config.gradientColors];
+    if (colors.length > 2) {
+      colors.splice(i, 1);
+      network.updateConfig("gradientColors", colors);
+      renderGradientColors();
+    }
+  }
+  if (e.target.classList.contains("gradient-color-add")) {
+    const colors = [...network.config.gradientColors, "#667eea"];
+    network.updateConfig("gradientColors", colors);
+    renderGradientColors();
+  }
+});
+
+// Asset particles
+let assetEntries = [];
+
+function buildAssetsConfig() {
+  const assets = {};
+  const particleAssets = [];
+  for (const e of assetEntries) {
+    let src = null;
+    let key;
+    if (e.source === "fa" && e.faIcon) {
+      const style = e.faStyle || "solid";
+      key = `fa_${style}_${e.faIcon}`;
+      src = `${FA_BASE}/${style}/${e.faIcon}.svg`;
+    } else if (e.source === "file" && e.fileUrl) {
+      key = `file_${e.id}`;
+      src = e.fileUrl;
+    }
+    if (src) {
+      assets[key] = src;
+      particleAssets.push(
+        e.mode === "count"
+          ? { asset: key, count: Math.max(0, Math.floor(e.value)) }
+          : { asset: key, percentage: Math.max(0, Math.min(100, e.value)) }
+      );
+    }
+  }
+  return { assets, particleAssets };
+}
+
+function applyAssetConfig() {
+  const { assets, particleAssets } = buildAssetsConfig();
+  if (Object.keys(assets).length > 0) {
+    network.updateConfig("assets", assets);
+    network.updateConfig("particleAssets", particleAssets);
+  } else {
+    network.updateConfig("assets", undefined);
+    network.updateConfig("particleAssets", undefined);
+  }
+  renderMouseAttractAssets();
+}
+
+function renderMouseAttractAssets() {
+  const row = document.getElementById("mouseAttractAssetsRow");
+  const container = document.getElementById("mouseAttractAssetsContainer");
+  const assets = network.config.assets;
+  const keys = assets ? Object.keys(assets) : [];
+  if (keys.length === 0) {
+    row.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+  row.style.display = "";
+  container.innerHTML = "";
+  const attractAssets = network.config.mouseAttractAssets ?? [];
+  keys.forEach((key) => {
+    const label = document.createElement("label");
+    label.className = "toggle";
+    label.style.cursor = "pointer";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = key;
+    input.checked = attractAssets.includes(key);
+    input.addEventListener("change", () => {
+      const current = network.config.mouseAttractAssets ?? [];
+      const next = input.checked ? [...current, key] : current.filter((a) => a !== key);
+      network.updateConfig("mouseAttractAssets", next.length ? next : undefined);
+    });
+    const span = document.createElement("span");
+    span.className = "toggle-label";
+    span.textContent = key;
+    label.appendChild(input);
+    label.appendChild(span);
+    container.appendChild(label);
+  });
+}
+
+function renderAssetEntries() {
+  const colorControls = document.getElementById("assetColorControls");
+  colorControls.style.display = assetEntries.length > 0 ? "block" : "none";
+
+  const container = document.getElementById("assetEntriesContainer");
+  container.innerHTML = "";
+  assetEntries.forEach((entry) => {
+    const wrap = document.createElement("div");
+    wrap.className = "asset-entry";
+    wrap.dataset.id = entry.id;
+    const label = entry.source === "fa" ? `Font Awesome: ${entry.faIcon}` : entry.fileName || "File";
+    wrap.innerHTML = `
+      <div class="asset-entry-header">
+        <span style="font-size:0.75rem;color:var(--text-muted)">${label}</span>
+        <button type="button" class="asset-remove" data-id="${entry.id}" aria-label="Remove">×</button>
+      </div>
+      <div class="asset-entry-source">
+        <select data-field="source" data-id="${entry.id}">
+          <option value="fa" ${entry.source === "fa" ? "selected" : ""}>Font Awesome</option>
+          <option value="file" ${entry.source === "file" ? "selected" : ""}>Upload PNG/SVG</option>
+        </select>
+        ${entry.source === "fa" ? `
+          <select data-field="faStyle" data-id="${entry.id}">
+            <option value="solid" ${(entry.faStyle || "solid") === "solid" ? "selected" : ""}>Solid</option>
+            <option value="regular" ${entry.faStyle === "regular" ? "selected" : ""}>Regular</option>
+          </select>
+          <select data-field="faIcon" data-id="${entry.id}">
+            ${FA_ICONS.map((icon) => `<option value="${icon}" ${entry.faIcon === icon ? "selected" : ""}>${icon}</option>`).join("")}
+          </select>
+        ` : `
+          <input type="file" data-id="${entry.id}" accept="image/png,image/svg+xml,image/jpeg,image/webp" style="font-size:0.75rem;color:var(--text-muted)">
+        `}
+      </div>
+      <div class="asset-entry-mode">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="radio" name="mode-${entry.id}" value="count" ${entry.mode === "count" ? "checked" : ""}>
+          <span style="font-size:0.8rem">Count</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="radio" name="mode-${entry.id}" value="percentage" ${entry.mode === "percentage" ? "checked" : ""}>
+          <span style="font-size:0.8rem">%</span>
+        </label>
+        <input type="number" data-field="value" data-id="${entry.id}" value="${entry.value}" min="0" max="${entry.mode === "percentage" ? 100 : 999}">
+      </div>
+    `;
+    container.appendChild(wrap);
+  });
+}
+
+function setupAssetEntryListeners() {
+  const container = document.getElementById("assetEntriesContainer");
+  container.addEventListener("change", (e) => {
+    const id = e.target.dataset?.id;
+    if (!id) return;
+    const entry = assetEntries.find((a) => a.id === id);
+    if (!entry) return;
+    if (e.target.dataset?.field === "source") {
+      entry.source = e.target.value;
+      if (entry.source === "file") entry.fileUrl = null;
+      renderAssetEntries();
+    } else if (e.target.dataset?.field === "faStyle") {
+      entry.faStyle = e.target.value;
+    } else if (e.target.dataset?.field === "faIcon") {
+      entry.faIcon = e.target.value;
+    } else if (e.target.dataset?.field === "value") {
+      entry.value = parseFloat(e.target.value) || 0;
+    } else if (e.target.type === "radio" && e.target.name?.startsWith("mode-")) {
+      entry.mode = e.target.value;
+    } else if (e.target.type === "file" && e.target.files?.[0]) {
+      const file = e.target.files[0];
+      entry.fileUrl = URL.createObjectURL(file);
+      entry.fileName = file.name;
+      renderAssetEntries();
+    }
+    applyAssetConfig();
+  });
+  container.addEventListener("input", (e) => {
+    if (e.target.dataset?.field === "value") {
+      const id = e.target.dataset.id;
+      const entry = assetEntries.find((a) => a.id === id);
+      if (entry) {
+        entry.value = parseFloat(e.target.value) || 0;
+        applyAssetConfig();
+      }
+    }
+  });
+  container.addEventListener("click", (e) => {
+    if (e.target.classList.contains("asset-remove")) {
+      const id = e.target.dataset.id;
+      assetEntries = assetEntries.filter((a) => a.id !== id);
+      renderAssetEntries();
+      applyAssetConfig();
+    }
+  });
+}
+
+document.getElementById("addAssetBtn").addEventListener("click", () => {
+  assetEntries.push({
+    id: crypto.randomUUID(),
+    source: "fa",
+    faIcon: "star",
+    faStyle: "solid",
+    mode: "count",
+    value: 10,
+  });
+  renderAssetEntries();
+  applyAssetConfig();
+});
+
+setupAssetEntryListeners();
+
+// Asset color & opacity
+[
+  { color: "assetColor", hex: "assetHex", opacity: "assetOpacity" },
+].forEach(({ color, hex, opacity }) => {
+  const colorInput = document.getElementById(color);
+  const hexInput = document.getElementById(hex);
+  const opacityInput = document.getElementById(opacity);
+  if (!colorInput || !hexInput || !opacityInput) return;
+
+  colorInput.addEventListener("input", () => {
+    hexInput.value = colorInput.value.toUpperCase();
+    network.updateConfig(color, colorInput.value);
+  });
+  hexInput.addEventListener("input", (e) => {
+    const v = validateHex(e.target.value);
+    if (v) {
+      colorInput.value = v;
+      hexInput.value = v.toUpperCase();
+      network.updateConfig(color, v);
+    }
+  });
+  opacityInput.addEventListener("input", () => {
+    const pct = parseInt(opacityInput.value) / 100;
+    document.getElementById("assetOpacityDisplay").textContent = Math.round(opacityInput.value) + "%";
+    network.updateConfig(opacity, pct);
   });
 });
 
 // Reset
 document.getElementById("reset").addEventListener("click", () => {
+  assetEntries = [];
+  renderAssetEntries();
+  network.updateConfig("assets", undefined);
+  network.updateConfig("particleAssets", undefined);
+  network.updateConfig("assetColor", undefined);
+  network.updateConfig("assetOpacity", undefined);
+  network.updateConfig("mouseAttractPercentage", undefined);
+  network.updateConfig("mouseAttractAssets", undefined);
+  renderMouseAttractAssets();
+  const assetColorEl = document.getElementById("assetColor");
+  const assetHexEl = document.getElementById("assetHex");
+  const assetOpacityEl = document.getElementById("assetOpacity");
+  if (assetColorEl) assetColorEl.value = "#a1a1aa";
+  if (assetHexEl) assetHexEl.value = "#a1a1aa";
+  if (assetOpacityEl) {
+    assetOpacityEl.value = 100;
+    document.getElementById("assetOpacityDisplay").textContent = "100%";
+  }
+  const mouseAttractPctEl = document.getElementById("mouseAttractPercentage");
+  if (mouseAttractPctEl) {
+    mouseAttractPctEl.value = 0;
+    mouseAttractPctEl.parentElement.querySelector(".value-display").textContent = "0%";
+  }
   Object.entries(DEFAULT_CONFIG).forEach(([key, value]) => {
     const el = document.getElementById(key);
     if (!el) return;
@@ -210,10 +508,6 @@ document.getElementById("reset").addEventListener("click", () => {
   document.getElementById("backgroundHex").value = DEFAULT_CONFIG.backgroundColor;
   document.getElementById("particleHex").value = DEFAULT_CONFIG.particleColor;
   document.getElementById("lineHex").value = DEFAULT_CONFIG.lineColor;
-  [0, 1, 2].forEach((i) => {
-    document.getElementById(`gradientColor${i}`).value =
-      DEFAULT_CONFIG.gradientColors[i] || "#667eea";
-  });
   const gradientSpinEl = document.getElementById("gradientSpin");
   if (gradientSpinEl) gradientSpinEl.checked = DEFAULT_CONFIG.gradientSpin;
   const gradientFlowEl = document.getElementById("gradientFlowAngle");
@@ -222,6 +516,7 @@ document.getElementById("reset").addEventListener("click", () => {
     updateValueDisplay(gradientFlowEl);
   }
   network.reset(DEFAULT_CONFIG);
+  renderGradientColors();
   updateGradientTypeUI(DEFAULT_CONFIG.gradientType);
 });
 

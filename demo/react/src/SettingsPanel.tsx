@@ -1,4 +1,54 @@
-import type { ParticleNetworkConfig } from "particle-network-bg";
+import { useCallback, useState } from "react";
+import type {
+  ParticleNetworkConfig,
+  ParticleAssetConfig,
+} from "particle-network-bg";
+
+const FA_ICONS = [
+  "star", "heart", "circle", "bolt", "fire", "snowflake", "leaf",
+  "sun", "moon", "cloud", "gem", "diamond", "crown", "music",
+];
+
+const FA_BASE = "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/svgs";
+
+interface AssetEntry {
+  id: string;
+  source: "fa" | "file";
+  faIcon?: string;
+  faStyle?: "solid" | "regular";
+  fileUrl?: string;
+  fileName?: string;
+  mode: "count" | "percentage";
+  value: number;
+}
+
+function buildAssetsAndParticleAssets(
+  entries: AssetEntry[]
+): { assets: Record<string, string>; particleAssets: ParticleAssetConfig[] } {
+  const assets: Record<string, string> = {};
+  const particleAssets: ParticleAssetConfig[] = [];
+  for (const e of entries) {
+    let src: string | null = null;
+    let key: string;
+    if (e.source === "fa" && e.faIcon) {
+      const style = e.faStyle ?? "solid";
+      key = `fa_${style}_${e.faIcon}`;
+      src = `${FA_BASE}/${style}/${e.faIcon}.svg`;
+    } else if (e.source === "file" && e.fileUrl) {
+      key = `file_${e.id}`;
+      src = e.fileUrl;
+    }
+    if (src) {
+      assets[key] = src;
+      particleAssets.push(
+        e.mode === "count"
+          ? { asset: key, count: Math.max(0, Math.floor(e.value)) }
+          : { asset: key, percentage: Math.max(0, Math.min(100, e.value)) }
+      );
+    }
+  }
+  return { assets, particleAssets };
+}
 
 interface SettingsPanelProps {
   config: Partial<ParticleNetworkConfig>;
@@ -49,6 +99,70 @@ export function SettingsPanel({
   open,
   onClose,
 }: SettingsPanelProps) {
+  const [assetEntries, setAssetEntries] = useState<AssetEntry[]>([]);
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  const applyAssetConfig = useCallback(
+    (entries: AssetEntry[]) => {
+      const { assets, particleAssets } = buildAssetsAndParticleAssets(entries);
+      if (Object.keys(assets).length > 0) {
+        onConfigChange("assets", assets);
+        onConfigChange("particleAssets", particleAssets);
+      } else {
+        onConfigChange("assets", undefined);
+        onConfigChange("particleAssets", undefined);
+      }
+    },
+    [onConfigChange]
+  );
+
+  const addAsset = () => {
+    const entry: AssetEntry = {
+      id: crypto.randomUUID(),
+      source: "fa",
+      faIcon: "star",
+      faStyle: "solid",
+      mode: "count",
+      value: 10,
+    };
+    const next = [...assetEntries, entry];
+    setAssetEntries(next);
+    applyAssetConfig(next);
+  };
+
+  const updateAsset = (id: string, updates: Partial<AssetEntry>) => {
+    const next = assetEntries.map((e) =>
+      e.id === id ? { ...e, ...updates } : e
+    );
+    setAssetEntries(next);
+    applyAssetConfig(next);
+  };
+
+  const removeAsset = (id: string) => {
+    const next = assetEntries.filter((e) => e.id !== id);
+    setAssetEntries(next);
+    applyAssetConfig(next);
+  };
+
+  const handleFileSelect = (id: string, file: File) => {
+    const url = URL.createObjectURL(file);
+    updateAsset(id, {
+      source: "file",
+      fileUrl: url,
+      fileName: file.name,
+    });
+  };
+
+  const handleReset = () => {
+    setAssetEntries([]);
+    setFileInputKey((k) => k + 1);
+    onConfigChange("assets", undefined);
+    onConfigChange("particleAssets", undefined);
+    onConfigChange("assetColor", undefined);
+    onConfigChange("assetOpacity", undefined);
+    onConfigChange("mouseAttractPercentage", undefined);
+    onConfigChange("mouseAttractAssets", undefined);
+  };
   const panelStyle: React.CSSProperties = {
     position: "fixed",
     top: 0,
@@ -149,6 +263,45 @@ export function SettingsPanel({
           />
         </ControlGroup>
 
+        <ControlGroup title="Asset Particles">
+          <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", margin: "0 0 12px 0" }}>
+            Use PNG/SVG images or Font Awesome icons as particles.
+          </p>
+          {assetEntries.length > 0 && (
+            <>
+              <ColorControl
+                label="Asset Color"
+                color={config.assetColor ?? "#a1a1aa"}
+                opacity={config.assetOpacity ?? 1}
+                onColorChange={(c) => onConfigChange("assetColor", c)}
+                onOpacityChange={(o) => onConfigChange("assetOpacity", o)}
+              />
+            </>
+          )}
+          {assetEntries.map((entry) => (
+            <AssetEntryEditor
+              key={entry.id}
+              entry={entry}
+              onUpdate={(u) => updateAsset(entry.id, u)}
+              onRemove={() => removeAsset(entry.id)}
+              onFileSelect={(file) => handleFileSelect(entry.id, file)}
+              fileInputKey={fileInputKey}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={addAsset}
+            style={{
+              ...btnStyle,
+              width: "100%",
+              marginTop: 8,
+              borderStyle: "dashed",
+            }}
+          >
+            + Add asset
+          </button>
+        </ControlGroup>
+
         <ControlGroup title="Connections">
           <Slider
             label="Distance"
@@ -182,6 +335,52 @@ export function SettingsPanel({
             max={400}
             onChange={(v) => onConfigChange("mouseRadius", v)}
           />
+          <Slider
+            label="Min Particle Distance"
+            value={config.minParticleDistance ?? 0}
+            min={0}
+            max={50}
+            onChange={(v) => onConfigChange("minParticleDistance", v)}
+          />
+          <Slider
+            label="Particle Repulsion"
+            value={config.minParticleForce ?? 0.5}
+            min={0}
+            max={2}
+            step={0.1}
+            onChange={(v) => onConfigChange("minParticleForce", v)}
+          />
+          <Slider
+            label="Attract %"
+            value={config.mouseAttractPercentage ?? 0}
+            min={0}
+            max={100}
+            format={(v) => Math.round(v) + "%"}
+            onChange={(v) => onConfigChange("mouseAttractPercentage", v)}
+          />
+          {config.assets && Object.keys(config.assets).length > 0 && (
+            <div style={{ marginBottom: "1rem" }}>
+              <label style={labelStyle}>Attract by asset</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {Object.keys(config.assets).map((key) => (
+                  <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={(config.mouseAttractAssets ?? []).includes(key)}
+                      onChange={(e) => {
+                        const prev = config.mouseAttractAssets ?? [];
+                        const next = e.target.checked
+                          ? [...prev, key]
+                          : prev.filter((a) => a !== key);
+                        onConfigChange("mouseAttractAssets", next.length ? next : undefined);
+                      }}
+                    />
+                    <span style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.9)" }}>{key}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <Slider
             label="Pulse Speed"
             value={config.pulseSpeed ?? 0}
@@ -277,33 +476,115 @@ export function SettingsPanel({
           </div>
           <div style={{ marginBottom: "1rem" }}>
             <label style={labelStyle}>Colors</label>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              {[0, 1, 2].map((i) => (
-                <input
-                  key={i}
-                  type="color"
-                  value={config.gradientColors?.[i] ?? "#667eea"}
-                  onChange={(e) => {
-                    const colors = [
-                      ...(config.gradientColors ?? [
-                        "#667eea",
-                        "#764ba2",
-                        "#f093fb",
-                      ]),
-                    ];
-                    colors[i] = e.target.value;
-                    onConfigChange("gradientColors", colors);
-                  }}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    padding: 2,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                  }}
-                />
-              ))}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.5rem",
+                alignItems: "center",
+              }}
+            >
+              {(config.gradientColors ?? DEFAULT_CONFIG.gradientColors ?? []).map(
+                (color, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <input
+                      type="color"
+                      value={color}
+                      onChange={(e) => {
+                        const colors = [
+                          ...(config.gradientColors ??
+                            DEFAULT_CONFIG.gradientColors ??
+                            []),
+                        ];
+                        colors[i] = e.target.value;
+                        onConfigChange("gradientColors", colors);
+                      }}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        padding: 2,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const colors = [
+                          ...(config.gradientColors ??
+                            DEFAULT_CONFIG.gradientColors ??
+                            []),
+                        ];
+                        if (colors.length > 2) {
+                          colors.splice(i, 1);
+                          onConfigChange("gradientColors", colors);
+                        }
+                      }}
+                      disabled={
+                        (config.gradientColors ??
+                          DEFAULT_CONFIG.gradientColors ??
+                          []).length <= 2
+                      }
+                      style={{
+                        width: 24,
+                        height: 24,
+                        padding: 0,
+                        border: "none",
+                        background: "rgba(255,255,255,0.08)",
+                        color: "rgba(255,255,255,0.6)",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: 14,
+                        lineHeight: 1,
+                        opacity:
+                          (config.gradientColors ??
+                            DEFAULT_CONFIG.gradientColors ??
+                            []).length <= 2
+                            ? 0.4
+                            : 1,
+                      }}
+                      aria-label="Remove color"
+                    >
+                      −
+                    </button>
+                  </div>
+                ),
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const colors = [
+                    ...(config.gradientColors ??
+                      DEFAULT_CONFIG.gradientColors ??
+                      []),
+                    "#667eea",
+                  ];
+                  onConfigChange("gradientColors", colors);
+                }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  padding: 0,
+                  border: "1px dashed rgba(255,255,255,0.2)",
+                  background: "transparent",
+                  color: "rgba(255,255,255,0.6)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 18,
+                  lineHeight: 1,
+                }}
+                aria-label="Add color"
+              >
+                +
+              </button>
             </div>
           </div>
           <Slider
@@ -345,6 +626,7 @@ export function SettingsPanel({
       >
         <button
           onClick={() => {
+            handleReset();
             Object.entries(DEFAULT_CONFIG).forEach(([k, v]) =>
               onConfigChange(k as keyof ParticleNetworkConfig, v as never),
             );
@@ -652,6 +934,140 @@ function Toggle({
         {label}
       </span>
     </label>
+  );
+}
+
+function AssetEntryEditor({
+  entry,
+  onUpdate,
+  onRemove,
+  onFileSelect,
+  fileInputKey,
+}: {
+  entry: AssetEntry;
+  onUpdate: (u: Partial<AssetEntry>) => void;
+  onRemove: () => void;
+  onFileSelect: (file: File) => void;
+  fileInputKey: number;
+}) {
+  const selectStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "8px 10px",
+    background: "rgba(30, 30, 40, 0.95)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 8,
+    color: "#fff",
+    fontSize: "0.8rem",
+  };
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        padding: 12,
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 8,
+        border: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)" }}>
+          {entry.source === "fa" ? `Font Awesome: ${entry.faIcon}` : entry.fileName ?? "File"}
+        </span>
+        <button
+          type="button"
+          onClick={onRemove}
+          style={{
+            background: "none",
+            border: "none",
+            color: "rgba(255,255,255,0.4)",
+            cursor: "pointer",
+            padding: 4,
+            fontSize: 18,
+            lineHeight: 1,
+          }}
+          aria-label="Remove"
+        >
+          ×
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <select
+          value={entry.source}
+          onChange={(e) => onUpdate({ source: e.target.value as "fa" | "file" })}
+          style={selectStyle}
+        >
+          <option value="fa">Font Awesome</option>
+          <option value="file">Upload PNG/SVG</option>
+        </select>
+        {entry.source === "fa" && (
+          <>
+            <select
+              value={entry.faStyle ?? "solid"}
+              onChange={(e) => onUpdate({ faStyle: e.target.value as "solid" | "regular" })}
+              style={{ ...selectStyle, flex: 1, minWidth: 80 }}
+            >
+              <option value="solid">Solid</option>
+              <option value="regular">Regular</option>
+            </select>
+            <select
+              value={entry.faIcon ?? "star"}
+              onChange={(e) => onUpdate({ faIcon: e.target.value })}
+              style={{ ...selectStyle, flex: 1, minWidth: 100 }}
+            >
+              {FA_ICONS.map((icon) => (
+                <option key={icon} value={icon}>
+                  {icon}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        {entry.source === "file" && (
+          <label style={{ flex: 1, minWidth: 120 }}>
+            <input
+              type="file"
+              key={fileInputKey}
+              accept="image/png,image/svg+xml,image/jpeg,image/webp"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onFileSelect(f);
+              }}
+              style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.7)" }}
+            />
+          </label>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="radio"
+            checked={entry.mode === "count"}
+            onChange={() => onUpdate({ mode: "count" })}
+          />
+          <span style={{ fontSize: "0.8rem" }}>Count</span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="radio"
+            checked={entry.mode === "percentage"}
+            onChange={() => onUpdate({ mode: "percentage" })}
+          />
+          <span style={{ fontSize: "0.8rem" }}>%</span>
+        </label>
+        <input
+          type="number"
+          value={entry.value}
+          min={entry.mode === "count" ? 0 : 0}
+          max={entry.mode === "percentage" ? 100 : 999}
+          onChange={(e) => onUpdate({ value: parseFloat(e.target.value) || 0 })}
+          style={{
+            ...selectStyle,
+            width: 70,
+            padding: "6px 8px",
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

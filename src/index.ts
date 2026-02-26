@@ -1,5 +1,11 @@
 export type GradientType = "linear" | "radial";
 
+export interface ParticleAssetConfig {
+  asset: string;
+  count?: number;
+  percentage?: number;
+}
+
 export interface ParticleNetworkConfig {
   particleCount: number;
   minRadius: number;
@@ -34,6 +40,17 @@ export interface ParticleNetworkConfig {
   gradientOrbitRadius: number;
   gradientDithering: boolean;
   gradientSmoothStops: number;
+  // Asset particles
+  particleAssets?: ParticleAssetConfig[];
+  assets?: Record<string, string>;
+  assetColor?: string;
+  assetOpacity?: number;
+  // Mouse attract: particles follow (vs repel) the pointer
+  mouseAttractPercentage?: number;
+  mouseAttractAssets?: string[];
+  // Particle repulsion: minimum distance, repel when closer
+  minParticleDistance?: number;
+  minParticleForce?: number;
 }
 
 export interface Particle {
@@ -45,6 +62,8 @@ export interface Particle {
   z: number;
   dz: number;
   currentRadius?: number;
+  assetId?: string;
+  mouseAttract?: boolean;
 }
 
 const DEFAULT_CONFIG: ParticleNetworkConfig = {
@@ -122,11 +141,26 @@ function interpolateColorStops(
   return { colors: outColors, stops: outStops };
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src.slice(0, 50)}...`));
+    if (src.trim().startsWith("<")) {
+      img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(src)));
+    } else {
+      img.src = src;
+    }
+  });
+}
+
 export class ParticleNetwork {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   config: ParticleNetworkConfig;
   private particles: Particle[] = [];
+  private assetImages: Map<string, HTMLImageElement> = new Map();
+  private assetTintCache: Map<string, HTMLCanvasElement> = new Map();
   private animationId: number | null = null;
   private isRunning = false;
   private mousePosition: { x: number; y: number } | null = null;
@@ -158,7 +192,26 @@ export class ParticleNetwork {
 
     this.handleResize();
     this.createParticles();
+    this.loadAssets();
     this.setupEventListeners();
+  }
+
+  private loadAssets(): void {
+    const { particleAssets, assets } = this.config;
+    if (!particleAssets?.length || !assets) return;
+    const toLoad = new Set<string>();
+    for (const pa of particleAssets) {
+      toLoad.add(pa.asset);
+    }
+    for (const key of toLoad) {
+      const src = assets[key];
+      if (!src) continue;
+      loadImage(src)
+        .then((img) => {
+          this.assetImages.set(key, img);
+        })
+        .catch(() => {});
+    }
   }
 
   private createGradientDiv(): void {
@@ -258,6 +311,55 @@ export class ParticleNetwork {
       }
     }
 
+    if (config.particleAssets && config.particleAssets.length > 0) {
+      if (!config.assets || typeof config.assets !== "object") {
+        throw new Error("assets map is required when using particleAssets");
+      }
+      for (let i = 0; i < config.particleAssets.length; i++) {
+        const pa = config.particleAssets[i];
+        if (typeof pa.asset !== "string" || !pa.asset) {
+          throw new Error(`particleAssets[${i}].asset must be a non-empty string`);
+        }
+        const hasCount = pa.count !== undefined;
+        const hasPct = pa.percentage !== undefined;
+        if (hasCount === hasPct) {
+          throw new Error(
+            `particleAssets[${i}]: specify exactly one of count or percentage`
+          );
+        }
+        if (hasCount && (typeof pa.count !== "number" || pa.count < 0)) {
+          throw new Error(`particleAssets[${i}].count must be a non-negative number`);
+        }
+        if (hasPct && (typeof pa.percentage !== "number" || pa.percentage < 0 || pa.percentage > 100)) {
+          throw new Error(`particleAssets[${i}].percentage must be 0-100`);
+        }
+        if (!config.assets[pa.asset]) {
+          throw new Error(`particleAssets[${i}]: asset "${pa.asset}" not found in assets map`);
+        }
+      }
+    }
+
+    if (config.assetColor != null && !HEX_COLOR_REGEX.test(config.assetColor)) {
+      throw new Error("assetColor must be a valid hex color");
+    }
+    if (config.assetOpacity != null && (typeof config.assetOpacity !== "number" || config.assetOpacity < 0 || config.assetOpacity > 1)) {
+      throw new Error("assetOpacity must be a number 0-1");
+    }
+
+    if (config.mouseAttractPercentage != null && (typeof config.mouseAttractPercentage !== "number" || config.mouseAttractPercentage < 0 || config.mouseAttractPercentage > 100)) {
+      throw new Error("mouseAttractPercentage must be 0-100");
+    }
+    if (config.mouseAttractAssets != null && (!Array.isArray(config.mouseAttractAssets) || config.mouseAttractAssets.some((a) => typeof a !== "string"))) {
+      throw new Error("mouseAttractAssets must be an array of strings");
+    }
+
+    if (config.minParticleDistance != null && (typeof config.minParticleDistance !== "number" || config.minParticleDistance < 0)) {
+      throw new Error("minParticleDistance must be a non-negative number");
+    }
+    if (config.minParticleForce != null && (typeof config.minParticleForce !== "number" || config.minParticleForce < 0 || config.minParticleForce > 2)) {
+      throw new Error("minParticleForce must be 0-2");
+    }
+
     return config;
   }
 
@@ -299,7 +401,8 @@ export class ParticleNetwork {
 
   private createParticles(): void {
     this.particles = [];
-    for (let i = 0; i < this.config.particleCount; i++) {
+    const total = this.config.particleCount;
+    for (let i = 0; i < total; i++) {
       const sizeRange = this.config.maxRadius - this.config.minRadius;
       const randomSize = Math.random() * sizeRange + this.config.minRadius;
       this.particles.push({
@@ -311,6 +414,67 @@ export class ParticleNetwork {
         z: Math.random(),
         dz: (Math.random() - 0.5) * this.config.depthSpeed * 2,
       });
+    }
+    this.assignParticleAssets();
+  }
+
+  private assignParticleAssets(): void {
+    const { particleAssets, particleCount } = this.config;
+    this.particles.forEach((p) => delete p.assetId);
+    if (!particleAssets?.length) {
+      this.assignMouseBehavior();
+      return;
+    }
+
+    const counts: { assetId: string; count: number }[] = [];
+    for (const pa of particleAssets) {
+      let count: number;
+      if (pa.count !== undefined) {
+        count = Math.floor(pa.count);
+      } else {
+        count = Math.floor((particleCount * (pa.percentage ?? 0)) / 100);
+      }
+      if (count > 0) counts.push({ assetId: pa.asset, count });
+    }
+
+    const indices: number[] = [];
+    for (let i = 0; i < particleCount; i++) indices.push(i);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+
+    let idx = 0;
+    for (const { assetId, count } of counts) {
+      for (let c = 0; c < count && idx < indices.length; c++, idx++) {
+        this.particles[indices[idx]].assetId = assetId;
+      }
+    }
+    this.assignMouseBehavior();
+  }
+
+  private assignMouseBehavior(): void {
+    const { mouseAttractPercentage, mouseAttractAssets, particleCount } = this.config;
+    this.particles.forEach((p) => (p.mouseAttract = false));
+
+    const attractAssets = new Set(mouseAttractAssets ?? []);
+    if (attractAssets.size > 0) {
+      this.particles.forEach((p) => {
+        if (p.assetId && attractAssets.has(p.assetId)) p.mouseAttract = true;
+      });
+    }
+
+    if (mouseAttractPercentage != null && mouseAttractPercentage > 0) {
+      const count = Math.floor((particleCount * Math.min(100, Math.max(0, mouseAttractPercentage))) / 100);
+      const indices: number[] = [];
+      for (let i = 0; i < particleCount; i++) indices.push(i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      for (let i = 0; i < count && i < indices.length; i++) {
+        this.particles[indices[i]].mouseAttract = true;
+      }
     }
   }
 
@@ -353,10 +517,33 @@ export class ParticleNetwork {
           const force =
             (this.config.mouseRadius - distance) / this.config.mouseRadius;
           const angle = Math.atan2(dy, dx);
-          const repelX = Math.cos(angle) * force * 0.5;
-          const repelY = Math.sin(angle) * force * 0.5;
-          particle.dx -= repelX;
-          particle.dy -= repelY;
+          const fx = Math.cos(angle) * force * 0.5;
+          const fy = Math.sin(angle) * force * 0.5;
+          if (particle.mouseAttract) {
+            particle.dx += fx;
+            particle.dy += fy;
+          } else {
+            particle.dx -= fx;
+            particle.dy -= fy;
+          }
+        }
+      }
+
+      const minDist = this.config.minParticleDistance ?? 0;
+      const minForce = this.config.minParticleForce ?? 0.5;
+      if (minDist > 0 && minForce > 0) {
+        for (const other of this.particles) {
+          if (other === particle) continue;
+          const dx = other.x - particle.x;
+          const dy = other.y - particle.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDist && dist > 0.001) {
+            const strength = ((minDist - dist) / minDist) * minForce;
+            const ux = -dx / dist;
+            const uy = -dy / dist;
+            particle.dx += ux * strength;
+            particle.dy += uy * strength;
+          }
         }
       }
 
@@ -377,23 +564,56 @@ export class ParticleNetwork {
     });
   }
 
+  private getTintedCanvas(img: HTMLImageElement, color: string): HTMLCanvasElement {
+    const key = `${img.src}_${color}`;
+    const cached = this.assetTintCache.get(key);
+    if (cached) return cached;
+
+    const size = 128;
+    const offscreen = document.createElement("canvas");
+    offscreen.width = size;
+    offscreen.height = size;
+    const ctx = offscreen.getContext("2d")!;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.drawImage(img, 0, 0, size, size);
+
+    this.assetTintCache.set(key, offscreen);
+    return offscreen;
+  }
+
   private drawParticles(): void {
-    this.ctx.fillStyle = this.config.particleColor;
+    const defaultColor = this.config.particleColor;
+    const assetColor = this.config.assetColor;
+    const assetOpacity = this.config.assetOpacity ?? 1;
+
     this.particles.forEach((particle) => {
       let opacity = this.config.particleOpacity;
       if (this.config.depthEffectEnabled) {
         opacity *= 0.6 + 0.4 * particle.z;
       }
-      this.ctx.globalAlpha = opacity;
-      this.ctx.beginPath();
-      this.ctx.arc(
-        particle.x,
-        particle.y,
-        particle.currentRadius ?? particle.radius,
-        0,
-        Math.PI * 2
-      );
-      this.ctx.fill();
+      const r = particle.currentRadius ?? particle.radius;
+      const img = particle.assetId ? this.assetImages.get(particle.assetId) : null;
+
+      if (img) {
+        this.ctx.globalAlpha = opacity * assetOpacity;
+        const size = r * 2;
+        const x = particle.x - r;
+        const y = particle.y - r;
+
+        if (assetColor && HEX_COLOR_REGEX.test(assetColor)) {
+          this.ctx.drawImage(this.getTintedCanvas(img, assetColor), x, y, size, size);
+        } else {
+          this.ctx.drawImage(img, x, y, size, size);
+        }
+      } else {
+        this.ctx.globalAlpha = opacity;
+        this.ctx.fillStyle = defaultColor;
+        this.ctx.beginPath();
+        this.ctx.arc(particle.x, particle.y, r, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
     });
     this.ctx.globalAlpha = 1;
   }
@@ -541,6 +761,21 @@ export class ParticleNetwork {
       this.createParticles();
     }
 
+    if (property === "particleAssets" || property === "assets") {
+      this.assetImages.clear();
+      this.assetTintCache.clear();
+      this.loadAssets();
+      this.assignParticleAssets();
+    }
+
+    if (property === "mouseAttractPercentage" || property === "mouseAttractAssets") {
+      this.assignMouseBehavior();
+    }
+
+    if (property === "assetColor") {
+      this.assetTintCache.clear();
+    }
+
     if (property === "moveSpeed") {
       this.particles.forEach((particle) => {
         const currentSpeed = Math.sqrt(
@@ -578,7 +813,10 @@ export class ParticleNetwork {
       ...DEFAULT_CONFIG,
       ...defaults,
     });
+    this.assetImages.clear();
+    this.assetTintCache.clear();
     this.createParticles();
+    this.loadAssets();
     this.stop();
     this.start();
   }

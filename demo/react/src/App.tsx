@@ -43,7 +43,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const instanceRef = useRef<ParticleNetwork | null>(null);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {

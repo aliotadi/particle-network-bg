@@ -126,6 +126,56 @@ function App() {
 | `gradientOrbitRadius`    | number    | 0.3                      | **Radial:** Orbit radius for center movement (0–1)       |
 | `gradientDithering`      | boolean   | true                     | *(Deprecated)* No longer used with CSS gradients          |
 | `gradientSmoothStops`    | number    | 4                        | *(Deprecated)* No longer used with CSS gradients          |
+| `particleAssets`         | array     | —                        | Use icons/images as particles (see Asset Particles)       |
+| `assets`                 | object    | —                        | Map of asset keys to URLs or SVG strings (required with `particleAssets`) |
+| `assetColor`             | string    | —                        | Tint color for asset particles (hex). Omit to use original image colors |
+| `assetOpacity`           | number    | 1                        | Opacity for asset particles (0–1)                         |
+| `mouseAttractPercentage` | number    | —                        | % of particles that follow the mouse (0–100). Others repel |
+| `mouseAttractAssets`     | string[]  | —                        | Asset keys whose particles follow the mouse. Others repel  |
+| `minParticleDistance`    | number    | —                        | Min distance (px). Particles repel when closer              |
+| `minParticleForce`       | number    | 0.5                      | Strength of particle repulsion (0–2)                       |
+
+## Asset Particles
+
+Use custom icons or images (SVG, PNG, etc.) as particles:
+
+```js
+new ParticleNetwork(canvas, {
+  particleCount: 100,
+  particleAssets: [
+    { asset: "star", count: 10 },           // exactly 10 particles with star icon
+    { asset: "heart", percentage: 30 },    // 30% of particles with heart icon
+  ],
+  assets: {
+    star: "https://example.com/star.svg",
+    heart: "<svg>...</svg>",  // inline SVG string also supported
+  },
+});
+```
+
+Each entry in `particleAssets` must specify exactly one of `count` (exact number) or `percentage` (0–100). Remaining particles render as default circles.
+
+## Mouse Attract
+
+Control which particles follow vs repel the mouse. Use one or both:
+
+```js
+new ParticleNetwork(canvas, {
+  mouseAttractPercentage: 30,           // 30% of particles follow the mouse
+  mouseAttractAssets: ["fa_solid_star"], // particles with this asset follow
+});
+```
+
+## Particle Repulsion
+
+Keep particles from overlapping. When two particles are closer than `minParticleDistance`, they repel each other:
+
+```js
+new ParticleNetwork(canvas, {
+  minParticleDistance: 20,
+  minParticleForce: 0.5,
+});
+```
 
 ## Gradient Examples
 

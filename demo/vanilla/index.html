@@ -11,14 +11,14 @@
 <body style="background: #0f0f14">
   <canvas id="canvas"></canvas>
 
-  <button class="control-toggle" id="controlToggle" aria-label="Toggle Controls" title="Settings">
+  <button class="control-toggle active" id="controlToggle" aria-label="Toggle Controls" title="Settings">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="12" cy="12" r="3"></circle>
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
     </svg>
   </button>
 
-  <div class="control-panel">
+  <div class="control-panel active">
     <div class="panel-header">
       <h2>Settings</h2>
       <button class="close-panel" aria-label="Close">
@@ -79,6 +79,26 @@
       </div>
 
       <div class="control-group">
+        <h3>Asset Particles</h3>
+        <p class="control-hint">Use PNG/SVG images or Font Awesome icons as particles.</p>
+        <div id="assetColorControls" style="display:none">
+          <div class="control-item">
+            <label>Asset Color</label>
+            <div class="color-input-group">
+              <input type="color" id="assetColor" value="#a1a1aa">
+              <input type="text" id="assetHex" value="#a1a1aa" class="hex-input">
+            </div>
+          </div>
+          <div class="control-item">
+            <label>Asset Opacity <span class="value-display" id="assetOpacityDisplay">100%</span></label>
+            <input type="range" id="assetOpacity" min="0" max="100" value="100">
+          </div>
+        </div>
+        <div id="assetEntriesContainer"></div>
+        <button type="button" id="addAssetBtn" class="btn btn-dashed">+ Add asset</button>
+      </div>
+
+      <div class="control-group">
         <h3>Connections</h3>
         <div class="control-item">
           <label>Distance <span class="value-display">150</span></label>
@@ -106,6 +126,22 @@
         <div class="control-item">
           <label>Mouse Radius <span class="value-display">200</span></label>
           <input type="range" id="mouseRadius" min="50" max="400" value="200">
+        </div>
+        <div class="control-item">
+          <label>Min Particle Distance <span class="value-display">0</span></label>
+          <input type="range" id="minParticleDistance" min="0" max="50" value="0">
+        </div>
+        <div class="control-item">
+          <label>Particle Repulsion <span class="value-display">0.5</span></label>
+          <input type="range" id="minParticleForce" min="0" max="2" step="0.1" value="0.5">
+        </div>
+        <div class="control-item">
+          <label>Attract % <span class="value-display">0%</span></label>
+          <input type="range" id="mouseAttractPercentage" min="0" max="100" value="0">
+        </div>
+        <div class="control-item" id="mouseAttractAssetsRow" style="display:none">
+          <label>Attract by asset</label>
+          <div id="mouseAttractAssetsContainer"></div>
         </div>
         <div class="control-item">
           <label>Pulse Speed <span class="value-display">0%</span></label>
@@ -164,11 +200,7 @@
         </div>
         <div class="control-item">
           <label>Colors</label>
-          <div class="gradient-colors">
-            <input type="color" id="gradientColor0" value="#667eea">
-            <input type="color" id="gradientColor1" value="#764ba2">
-            <input type="color" id="gradientColor2" value="#f093fb">
-          </div>
+          <div id="gradientColorsContainer" class="gradient-colors"></div>
         </div>
         <div class="control-item">
           <label>Speed <span class="value-display">0.02</span></label>
