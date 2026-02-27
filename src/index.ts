@@ -6,6 +6,50 @@ export interface ParticleAssetConfig {
   percentage?: number;
 }
 
+/** Pairs of category names. "default" = normal particles; asset keys = asset types. */
+export interface ConnectionRules {
+  /** Only these category pairs connect. Omit or empty = all connect. */
+  allow?: [string, string][];
+  /** These pairs never connect (applied after allow). */
+  deny?: [string, string][];
+}
+
+export type LiquidGlassHighlightPosition = "top-left" | "top" | "top-right" | "center" | "bottom-right";
+
+/** 3D fluid droplet styling. Blur + contrast for gooey feel; 3D shading for sphere look. */
+export interface LiquidGlassConfig {
+  /** Base color (hex). */
+  color?: string;
+  /** Overall opacity (0–1). */
+  opacity?: number;
+  /** Blur radius (px) for fluid gooey effect. */
+  blur?: number;
+  /** Contrast on container for gooey merge. */
+  contrast?: number;
+  /** Main highlight strength (0–1) – 3D specular. */
+  reflectionStrength?: number;
+  /** Position of main highlight (light direction). */
+  highlightPosition?: LiquidGlassHighlightPosition;
+  /** Highlight color (hex). */
+  highlightColor?: string;
+  /** Shadow/dark side strength (0–1) for 3D depth. */
+  shadowStrength?: number;
+  /** Secondary reflection strength (0–1). */
+  secondaryReflection?: number;
+  /** Secondary highlight position. */
+  secondaryHighlightPosition?: LiquidGlassHighlightPosition;
+  /** Minimum radius (px) for liquid glass particles (overrides root minRadius). */
+  minRadius?: number;
+  /** Maximum radius (px) for liquid glass particles (overrides root maxRadius). */
+  maxRadius?: number;
+}
+
+/** Particle type entry for mixing circle, asset, liquidGlass. */
+export type ParticleTypeEntry =
+  | { type: "circle"; count?: number; percentage?: number }
+  | { type: "asset"; asset: string; count?: number; percentage?: number; liquidGlass?: boolean }
+  | { type: "liquidGlass"; count?: number; percentage?: number };
+
 export interface ParticleNetworkConfig {
   particleCount: number;
   minRadius: number;
@@ -51,6 +95,33 @@ export interface ParticleNetworkConfig {
   // Particle repulsion: minimum distance, repel when closer
   minParticleDistance?: number;
   minParticleForce?: number;
+  // Connection rules: which categories can connect to each other
+  connectionRules?: ConnectionRules;
+  // Particle type mix: circle, asset, liquidGlass (overrides particleAssets when set)
+  particleTypes?: ParticleTypeEntry[];
+  // Liquid glass config
+  liquidGlass?: LiquidGlassConfig;
+  /** % of particles that render as liquid glass (0–100). Works with particleAssets. */
+  liquidGlassPercentage?: number;
+  /** Or exact count of liquid glass particles. */
+  liquidGlassCount?: number;
+}
+
+/** Blob deformation state for a liquid glass particle. */
+interface BlobState {
+  pointCount: number;
+  freqs: number[];
+  amps: number[];
+  phases: number[];
+  phaseSpeeds: number[];
+  rotSpeed: number;
+  rotation: number;
+  /** Per-drop highlight angle (radians) — slowly drifts for living light feel. */
+  hlAngle: number;
+  hlAngleSpeed: number;
+  /** Mouse-induced directional stretch (smoothed). */
+  mouseStretchX: number;
+  mouseStretchY: number;
 }
 
 export interface Particle {
@@ -64,6 +135,10 @@ export interface Particle {
   currentRadius?: number;
   assetId?: string;
   mouseAttract?: boolean;
+  /** Render as liquid glass (merge + glass styling). */
+  liquidGlass?: boolean;
+  /** Blob deformation state — single shape, not layers. */
+  blob?: BlobState;
 }
 
 const DEFAULT_CONFIG: ParticleNetworkConfig = {
@@ -98,6 +173,21 @@ const DEFAULT_CONFIG: ParticleNetworkConfig = {
   gradientOrbitRadius: 0.3,
   gradientDithering: true,
   gradientSmoothStops: 4,
+};
+
+const DEFAULT_LIQUID_GLASS: Required<LiquidGlassConfig> = {
+  color: "#88ccff",
+  opacity: 0.6,
+  blur: 12,
+  contrast: 25,
+  reflectionStrength: 0.85,
+  highlightPosition: "top-left",
+  highlightColor: "#ffffff",
+  shadowStrength: 0.4,
+  secondaryReflection: 0.25,
+  secondaryHighlightPosition: "bottom-right",
+  minRadius: 20,
+  maxRadius: 40,
 };
 
 const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
@@ -192,6 +282,7 @@ export class ParticleNetwork {
 
     this.handleResize();
     this.createParticles();
+    this.assignParticleTypes();
     this.loadAssets();
     this.setupEventListeners();
   }
@@ -220,6 +311,7 @@ export class ParticleNetwork {
       "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1;";
     this.canvas.parentElement?.insertBefore(this.gradientDiv, this.canvas);
   }
+
 
   private validateConfig(config: ParticleNetworkConfig): ParticleNetworkConfig {
     const numericParams: (keyof ParticleNetworkConfig)[] = [
@@ -360,6 +452,83 @@ export class ParticleNetwork {
       throw new Error("minParticleForce must be 0-2");
     }
 
+    if (config.connectionRules != null) {
+      const { allow, deny } = config.connectionRules;
+      const validatePairs = (arr: unknown, name: string) => {
+        if (!Array.isArray(arr)) throw new Error(`connectionRules.${name} must be an array`);
+        for (let i = 0; i < arr.length; i++) {
+          const pair = arr[i];
+          if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== "string" || typeof pair[1] !== "string") {
+            throw new Error(`connectionRules.${name}[${i}] must be [string, string]`);
+          }
+        }
+      };
+      if (allow != null) validatePairs(allow, "allow");
+      if (deny != null) validatePairs(deny, "deny");
+    }
+
+    if (config.particleTypes != null) {
+      if (!Array.isArray(config.particleTypes)) {
+        throw new Error("particleTypes must be an array");
+      }
+      if (!config.assets || typeof config.assets !== "object") {
+        throw new Error("assets map is required when using particleTypes with asset entries");
+      }
+      for (let i = 0; i < config.particleTypes.length; i++) {
+        const pt = config.particleTypes[i];
+        if (!pt || typeof pt.type !== "string") {
+          throw new Error(`particleTypes[${i}].type must be "circle", "asset", or "liquidGlass"`);
+        }
+        if (pt.type !== "circle" && pt.type !== "asset" && pt.type !== "liquidGlass") {
+          throw new Error(`particleTypes[${i}].type must be "circle", "asset", or "liquidGlass"`);
+        }
+        const hasCount = pt.count !== undefined;
+        const hasPct = pt.percentage !== undefined;
+        if (hasCount === hasPct) {
+          throw new Error(`particleTypes[${i}]: specify exactly one of count or percentage`);
+        }
+        if (pt.type === "asset") {
+          if (typeof (pt as { asset?: string }).asset !== "string" || !(pt as { asset?: string }).asset) {
+            throw new Error(`particleTypes[${i}].asset must be a non-empty string`);
+          }
+          if (!config.assets[(pt as { asset: string }).asset]) {
+            throw new Error(`particleTypes[${i}]: asset "${(pt as { asset: string }).asset}" not found in assets`);
+          }
+        }
+      }
+    }
+
+    if (config.liquidGlass != null) {
+      const lg = config.liquidGlass;
+      if (lg.color != null && !HEX_COLOR_REGEX.test(lg.color)) {
+        throw new Error("liquidGlass.color must be a valid hex color");
+      }
+      if (lg.opacity != null && (typeof lg.opacity !== "number" || lg.opacity < 0 || lg.opacity > 1)) {
+        throw new Error("liquidGlass.opacity must be 0-1");
+      }
+      if (lg.blur != null && (typeof lg.blur !== "number" || lg.blur < 0)) {
+        throw new Error("liquidGlass.blur must be a non-negative number");
+      }
+      if (lg.contrast != null && (typeof lg.contrast !== "number" || lg.contrast < 1)) {
+        throw new Error("liquidGlass.contrast must be >= 1");
+      }
+      if (lg.highlightColor != null && !HEX_COLOR_REGEX.test(lg.highlightColor)) {
+        throw new Error("liquidGlass.highlightColor must be a valid hex color");
+      }
+      if (lg.minRadius != null && (typeof lg.minRadius !== "number" || lg.minRadius <= 0)) {
+        throw new Error("liquidGlass.minRadius must be a positive number");
+      }
+      if (lg.maxRadius != null && (typeof lg.maxRadius !== "number" || lg.maxRadius <= 0)) {
+        throw new Error("liquidGlass.maxRadius must be a positive number");
+      }
+    }
+    if (config.liquidGlassPercentage != null && (typeof config.liquidGlassPercentage !== "number" || config.liquidGlassPercentage < 0 || config.liquidGlassPercentage > 100)) {
+      throw new Error("liquidGlassPercentage must be 0-100");
+    }
+    if (config.liquidGlassCount != null && (typeof config.liquidGlassCount !== "number" || config.liquidGlassCount < 0)) {
+      throw new Error("liquidGlassCount must be a non-negative number");
+    }
+
     return config;
   }
 
@@ -415,27 +584,99 @@ export class ParticleNetwork {
         dz: (Math.random() - 0.5) * this.config.depthSpeed * 2,
       });
     }
-    this.assignParticleAssets();
+    this.assignParticleTypes();
   }
 
-  private assignParticleAssets(): void {
-    const { particleAssets, particleCount } = this.config;
-    this.particles.forEach((p) => delete p.assetId);
-    if (!particleAssets?.length) {
-      this.assignMouseBehavior();
-      return;
+  private assignParticleTypes(): void {
+    const { particleTypes, particleAssets, particleCount } = this.config;
+    this.particles.forEach((p) => {
+      delete p.assetId;
+      delete p.liquidGlass;
+    });
+
+    if (particleTypes?.length) {
+      const counts: { assetId?: string; liquidGlass: boolean; count: number }[] = [];
+      for (const pt of particleTypes) {
+        let count: number;
+        if (pt.count !== undefined) {
+          count = Math.floor(pt.count);
+        } else {
+          count = Math.floor((particleCount * (pt.percentage ?? 0)) / 100);
+        }
+        if (count > 0) {
+          if (pt.type === "circle") {
+            counts.push({ liquidGlass: false, count });
+          } else if (pt.type === "asset") {
+            counts.push({
+              assetId: pt.asset,
+              liquidGlass: pt.liquidGlass ?? false,
+              count,
+            });
+          } else {
+            counts.push({ liquidGlass: true, count });
+          }
+        }
+      }
+
+      const indices: number[] = [];
+      for (let i = 0; i < particleCount; i++) indices.push(i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+
+      let idx = 0;
+      for (const { assetId, liquidGlass, count } of counts) {
+        for (let c = 0; c < count && idx < indices.length; c++, idx++) {
+          const p = this.particles[indices[idx]];
+          if (assetId) p.assetId = assetId;
+          p.liquidGlass = liquidGlass;
+          if (liquidGlass) this.resizeAsLiquidGlass(p);
+        }
+      }
+    } else if (particleAssets?.length) {
+      const counts: { assetId: string; count: number }[] = [];
+      for (const pa of particleAssets) {
+        let count: number;
+        if (pa.count !== undefined) {
+          count = Math.floor(pa.count);
+        } else {
+          count = Math.floor((particleCount * (pa.percentage ?? 0)) / 100);
+        }
+        if (count > 0) counts.push({ assetId: pa.asset, count });
+      }
+
+      const indices: number[] = [];
+      for (let i = 0; i < particleCount; i++) indices.push(i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+
+      let idx = 0;
+      for (const { assetId, count } of counts) {
+        for (let c = 0; c < count && idx < indices.length; c++, idx++) {
+          this.particles[indices[idx]].assetId = assetId;
+        }
+      }
     }
 
-    const counts: { assetId: string; count: number }[] = [];
-    for (const pa of particleAssets) {
-      let count: number;
-      if (pa.count !== undefined) {
-        count = Math.floor(pa.count);
-      } else {
-        count = Math.floor((particleCount * (pa.percentage ?? 0)) / 100);
-      }
-      if (count > 0) counts.push({ assetId: pa.asset, count });
+    if (!particleTypes?.length && (this.config.liquidGlassPercentage != null || this.config.liquidGlassCount != null)) {
+      this.assignLiquidGlass();
     }
+    this.assignMouseBehavior();
+  }
+
+  private assignLiquidGlass(): void {
+    const { liquidGlassPercentage, liquidGlassCount, particleCount } = this.config;
+    this.particles.forEach((p) => (p.liquidGlass = false));
+    let count = 0;
+    if (liquidGlassCount != null && liquidGlassCount > 0) {
+      count = Math.min(Math.floor(liquidGlassCount), particleCount);
+    } else if (liquidGlassPercentage != null && liquidGlassPercentage > 0) {
+      count = Math.floor((particleCount * Math.min(100, Math.max(0, liquidGlassPercentage))) / 100);
+    }
+    if (count <= 0) return;
 
     const indices: number[] = [];
     for (let i = 0; i < particleCount; i++) indices.push(i);
@@ -443,14 +684,49 @@ export class ParticleNetwork {
       const j = Math.floor(Math.random() * (i + 1));
       [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-
-    let idx = 0;
-    for (const { assetId, count } of counts) {
-      for (let c = 0; c < count && idx < indices.length; c++, idx++) {
-        this.particles[indices[idx]].assetId = assetId;
-      }
+    for (let i = 0; i < count && i < indices.length; i++) {
+      const p = this.particles[indices[i]];
+      p.liquidGlass = true;
+      this.resizeAsLiquidGlass(p);
     }
-    this.assignMouseBehavior();
+  }
+
+  private resizeAsLiquidGlass(p: Particle): void {
+    const lg = this.getLiquidGlassConfig();
+    const min = lg.minRadius ?? DEFAULT_LIQUID_GLASS.minRadius;
+    const max = lg.maxRadius ?? DEFAULT_LIQUID_GLASS.maxRadius;
+    p.radius = Math.random() * (max - min) + min;
+    delete p.currentRadius;
+    this.initBlob(p);
+  }
+
+  private initBlob(p: Particle): void {
+    const pointCount = 12;
+    const modeCount = 3;
+    const freqs: number[] = [];
+    const amps: number[] = [];
+    const phases: number[] = [];
+    const phaseSpeeds: number[] = [];
+    for (let m = 0; m < modeCount; m++) {
+      freqs.push(2 + m);
+      amps.push((0.03 + Math.random() * 0.03) / (1 + m * 0.4));
+      phases.push(Math.random() * Math.PI * 2);
+      phaseSpeeds.push((0.006 + Math.random() * 0.01) * (Math.random() > 0.5 ? 1 : -1));
+    }
+    const hlAngle = Math.random() * Math.PI * 2;
+    p.blob = {
+      pointCount,
+      freqs,
+      amps,
+      phases,
+      phaseSpeeds,
+      rotSpeed: (Math.random() > 0.5 ? 1 : -1) * (0.001 + Math.random() * 0.003),
+      rotation: Math.random() * Math.PI * 2,
+      hlAngle,
+      hlAngleSpeed: (0.002 + Math.random() * 0.004) * (Math.random() > 0.5 ? 1 : -1),
+      mouseStretchX: 0,
+      mouseStretchY: 0,
+    };
   }
 
   private assignMouseBehavior(): void {
@@ -532,13 +808,16 @@ export class ParticleNetwork {
       const minDist = this.config.minParticleDistance ?? 0;
       const minForce = this.config.minParticleForce ?? 0.5;
       if (minDist > 0 && minForce > 0) {
+        const r1 = particle.currentRadius ?? particle.radius;
         for (const other of this.particles) {
           if (other === particle) continue;
           const dx = other.x - particle.x;
           const dy = other.y - particle.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist && dist > 0.001) {
-            const strength = ((minDist - dist) / minDist) * minForce;
+          const r2 = other.currentRadius ?? other.radius;
+          const gap = dist - r1 - r2;
+          if (gap < minDist && dist > 0.001) {
+            const strength = ((minDist - gap) / minDist) * minForce;
             const ux = -dx / dist;
             const uy = -dy / dist;
             particle.dx += ux * strength;
@@ -562,6 +841,143 @@ export class ParticleNetwork {
         particle.dy = (particle.dy / speed) * this.config.moveSpeed;
       }
     });
+  }
+
+  private getLiquidGlassConfig(): LiquidGlassConfig {
+    return { ...DEFAULT_LIQUID_GLASS, ...this.config.liquidGlass };
+  }
+
+  private getHighlightOffset(pos: LiquidGlassHighlightPosition, r: number): { x: number; y: number } {
+    switch (pos) {
+      case "top-left":
+        return { x: r * -0.35, y: r * -0.35 };
+      case "top":
+        return { x: 0, y: r * -0.4 };
+      case "top-right":
+        return { x: r * 0.35, y: r * -0.35 };
+      case "bottom-right":
+        return { x: r * 0.3, y: r * 0.3 };
+      case "center":
+      default:
+        return { x: r * -0.2, y: r * -0.2 };
+    }
+  }
+
+  private traceBlobPath(cx: number, cy: number, r: number, blob: BlobState): void {
+    const n = blob.pointCount;
+    const sx = blob.mouseStretchX;
+    const sy = blob.mouseStretchY;
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * Math.PI * 2;
+      const ra = angle + blob.rotation;
+      let deform = 0;
+      for (let m = 0; m < blob.freqs.length; m++) {
+        deform += blob.amps[m] * Math.sin(blob.freqs[m] * ra + blob.phases[m]);
+      }
+      const pr = r * (1 + deform);
+      let px = cx + Math.cos(angle) * pr;
+      let py = cy + Math.sin(angle) * pr;
+      px += sx * Math.cos(angle) * Math.max(0, Math.cos(angle));
+      py += sy * Math.sin(angle) * Math.max(0, Math.sin(angle));
+      pts.push({ x: px, y: py });
+    }
+
+    this.ctx.beginPath();
+    const last = pts[n - 1];
+    const first = pts[0];
+    this.ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
+    for (let i = 0; i < n; i++) {
+      const next = pts[(i + 1) % n];
+      this.ctx.quadraticCurveTo(pts[i].x, pts[i].y, (pts[i].x + next.x) / 2, (pts[i].y + next.y) / 2);
+    }
+    this.ctx.closePath();
+  }
+
+  private updateBlobMouse(particle: Particle): void {
+    const blob = particle.blob;
+    if (!blob) return;
+    const r = particle.currentRadius ?? particle.radius;
+    const smoothing = 0.08;
+
+    if (this.config.mouseInteraction && this.mousePosition) {
+      const dx = this.mousePosition.x - particle.x;
+      const dy = this.mousePosition.y - particle.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const mouseR = this.config.mouseRadius;
+
+      if (dist < mouseR && dist > 0.01) {
+        const influence = ((mouseR - dist) / mouseR);
+        const stretch = influence * r * 0.4;
+        const ux = dx / dist;
+        const uy = dy / dist;
+        const targetX = ux * stretch;
+        const targetY = uy * stretch;
+        blob.mouseStretchX += (targetX - blob.mouseStretchX) * smoothing;
+        blob.mouseStretchY += (targetY - blob.mouseStretchY) * smoothing;
+        return;
+      }
+    }
+    blob.mouseStretchX *= (1 - smoothing);
+    blob.mouseStretchY *= (1 - smoothing);
+  }
+
+  private draw3DFluidSphere(particle: Particle): void {
+    const lg = this.getLiquidGlassConfig();
+    const r = particle.currentRadius ?? particle.radius;
+    if (r <= 0) return;
+    if (!particle.blob) this.initBlob(particle);
+    const blob = particle.blob!;
+    const cx = particle.x;
+    const cy = particle.y;
+
+    let opacity = (lg.opacity ?? DEFAULT_LIQUID_GLASS.opacity) * this.config.particleOpacity;
+    if (this.config.depthEffectEnabled) {
+      opacity *= 0.6 + 0.4 * particle.z;
+    }
+    if (opacity <= 0) return;
+
+    blob.rotation += blob.rotSpeed;
+    for (let m = 0; m < blob.phases.length; m++) {
+      blob.phases[m] += blob.phaseSpeeds[m];
+    }
+    blob.hlAngle += blob.hlAngleSpeed;
+    this.updateBlobMouse(particle);
+
+    const color = lg.color ?? DEFAULT_LIQUID_GLASS.color;
+    const baseR = parseInt(color.slice(1, 3), 16);
+    const baseG = parseInt(color.slice(3, 5), 16);
+    const baseB = parseInt(color.slice(5, 7), 16);
+    const shadowStr = lg.shadowStrength ?? DEFAULT_LIQUID_GLASS.shadowStrength;
+
+    // Per-drop drifting highlight position
+    const hlDist = r * 0.35;
+    const hlX = cx + Math.cos(blob.hlAngle) * hlDist;
+    const hlY = cy + Math.sin(blob.hlAngle) * hlDist;
+
+    const lr = Math.min(255, baseR + Math.round((255 - baseR) * 0.55));
+    const lgr = Math.min(255, baseG + Math.round((255 - baseG) * 0.55));
+    const lb = Math.min(255, baseB + Math.round((255 - baseB) * 0.55));
+    const dr = Math.max(0, Math.round(baseR * (1 - shadowStr * 0.35)));
+    const dg = Math.max(0, Math.round(baseG * (1 - shadowStr * 0.35)));
+    const db = Math.max(0, Math.round(baseB * (1 - shadowStr * 0.35)));
+
+    this.ctx.save();
+
+    const grad = this.ctx.createRadialGradient(
+      hlX, hlY, r * 0.05,
+      cx, cy, r * 1.05
+    );
+    grad.addColorStop(0,    `rgba(${lr},${lgr},${lb}, ${opacity * 0.95})`);
+    grad.addColorStop(0.4,  `rgba(${baseR},${baseG},${baseB}, ${opacity * 0.8})`);
+    grad.addColorStop(0.8,  `rgba(${dr},${dg},${db}, ${opacity * 0.6})`);
+    grad.addColorStop(1,    `rgba(${dr},${dg},${db}, ${opacity * 0.25})`);
+
+    this.ctx.fillStyle = grad;
+    this.traceBlobPath(cx, cy, r, blob);
+    this.ctx.fill();
+
+    this.ctx.restore();
   }
 
   private getTintedCanvas(img: HTMLImageElement, color: string): HTMLCanvasElement {
@@ -589,6 +1005,11 @@ export class ParticleNetwork {
     const assetOpacity = this.config.assetOpacity ?? 1;
 
     this.particles.forEach((particle) => {
+      if (particle.liquidGlass) {
+        this.draw3DFluidSphere(particle);
+        return;
+      }
+
       let opacity = this.config.particleOpacity;
       if (this.config.depthEffectEnabled) {
         opacity *= 0.6 + 0.4 * particle.z;
@@ -618,6 +1039,34 @@ export class ParticleNetwork {
     this.ctx.globalAlpha = 1;
   }
 
+  private getCategory(p: Particle): string {
+    return p.assetId ?? "default";
+  }
+
+  private canConnect(a: Particle, b: Particle): boolean {
+    const rules = this.config.connectionRules;
+    if (!rules) return true;
+
+    const catA = this.getCategory(a);
+    const catB = this.getCategory(b);
+    const pair = [catA, catB].sort().join("|");
+
+    if (rules.deny?.length) {
+      const denied = rules.deny.some(
+        ([x, y]) => [x, y].sort().join("|") === pair
+      );
+      if (denied) return false;
+    }
+
+    if (rules.allow && rules.allow.length > 0) {
+      return rules.allow.some(
+        ([x, y]) => [x, y].sort().join("|") === pair
+      );
+    }
+
+    return true;
+  }
+
   private drawConnections(): void {
     for (let i = 0; i < this.particles.length; i++) {
       for (let j = i + 1; j < this.particles.length; j++) {
@@ -625,7 +1074,7 @@ export class ParticleNetwork {
         const dy = this.particles[i].y - this.particles[j].y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance < this.config.maxDistance) {
+        if (distance < this.config.maxDistance && this.canConnect(this.particles[i], this.particles[j])) {
           const opacity = 1 - distance / this.config.maxDistance;
           const color = this.hexToRgb(this.config.lineColor);
           this.ctx.beginPath();
@@ -761,11 +1210,17 @@ export class ParticleNetwork {
       this.createParticles();
     }
 
-    if (property === "particleAssets" || property === "assets") {
+    if (property === "particleAssets" || property === "assets" || property === "particleTypes") {
       this.assetImages.clear();
       this.assetTintCache.clear();
       this.loadAssets();
-      this.assignParticleAssets();
+      this.assignParticleTypes();
+    }
+
+    if (property === "liquidGlassPercentage" || property === "liquidGlassCount") {
+      if (!this.config.particleTypes?.length) {
+        this.assignLiquidGlass();
+      }
     }
 
     if (property === "mouseAttractPercentage" || property === "mouseAttractAssets") {

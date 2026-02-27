@@ -2,6 +2,8 @@ import { useCallback, useState } from "react";
 import type {
   ParticleNetworkConfig,
   ParticleAssetConfig,
+  ConnectionRules,
+  LiquidGlassConfig,
 } from "particle-network-bg";
 
 const FA_ICONS = [
@@ -162,6 +164,11 @@ export function SettingsPanel({
     onConfigChange("assetOpacity", undefined);
     onConfigChange("mouseAttractPercentage", undefined);
     onConfigChange("mouseAttractAssets", undefined);
+    onConfigChange("connectionRules", undefined);
+    onConfigChange("liquidGlassPercentage", undefined);
+    onConfigChange("liquidGlassCount", undefined);
+    onConfigChange("liquidGlass", undefined);
+    onConfigChange("particleTypes", undefined);
   };
   const panelStyle: React.CSSProperties = {
     position: "fixed",
@@ -325,6 +332,10 @@ export function SettingsPanel({
             onColorChange={(c) => onConfigChange("lineColor", c)}
             onOpacityChange={(o) => onConfigChange("lineOpacity", o)}
           />
+          <ConnectionRulesEditor
+            config={config}
+            onConfigChange={onConfigChange}
+          />
         </ControlGroup>
 
         <ControlGroup title="Effects">
@@ -413,6 +424,36 @@ export function SettingsPanel({
             checked={config.depthEffectEnabled ?? true}
             onChange={(v) => onConfigChange("depthEffectEnabled", v)}
           />
+        </ControlGroup>
+
+        <ControlGroup title="Liquid Glass">
+          <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.5)", margin: "0 0 12px 0" }}>
+            3D fluid spheres with blur + contrast for gooey liquid feel.
+          </p>
+          <Slider
+            label="Liquid Glass %"
+            value={config.liquidGlassPercentage ?? 0}
+            min={0}
+            max={100}
+            format={(v) => Math.round(v) + "%"}
+            onChange={(v) => {
+              onConfigChange("liquidGlassPercentage", v);
+              if (v > 0) onConfigChange("liquidGlassCount", undefined);
+            }}
+          />
+          <Slider
+            label="Liquid Glass Count"
+            value={config.liquidGlassCount ?? 0}
+            min={0}
+            max={config.particleCount ?? 100}
+            onChange={(v) => {
+              onConfigChange("liquidGlassCount", Math.floor(v));
+              if (v > 0) onConfigChange("liquidGlassPercentage", undefined);
+            }}
+          />
+          {(config.liquidGlassPercentage ?? 0) > 0 || (config.liquidGlassCount ?? 0) > 0 ? (
+            <LiquidGlassConfigEditor config={config} onConfigChange={onConfigChange} />
+          ) : null}
         </ControlGroup>
 
         <ControlGroup title="Gradient">
@@ -697,6 +738,206 @@ const btnStyle: React.CSSProperties = {
   fontSize: "0.8rem",
   fontWeight: 500,
   cursor: "pointer",
+};
+
+function LiquidGlassConfigEditor({
+  config,
+  onConfigChange,
+}: {
+  config: Partial<ParticleNetworkConfig>;
+  onConfigChange: (key: keyof ParticleNetworkConfig, value: unknown) => void;
+}) {
+  const lg = config.liquidGlass ?? {};
+  const update = (key: keyof LiquidGlassConfig, value: unknown) => {
+    onConfigChange("liquidGlass", { ...lg, [key]: value });
+  };
+
+  return (
+    <div style={{ marginTop: 12, padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 8 }}>
+      <ColorControl
+        label="Color"
+        color={lg.color ?? "#88ccff"}
+        opacity={lg.opacity ?? 0.6}
+        onColorChange={(c) => update("color", c)}
+        onOpacityChange={(o) => update("opacity", o)}
+      />
+      <Slider
+        label="Shadow Strength"
+        value={lg.shadowStrength ?? 0.4}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={(v) => update("shadowStrength", v)}
+      />
+      <Slider
+        label="Min Radius"
+        value={lg.minRadius ?? 20}
+        min={5}
+        max={80}
+        onChange={(v) => update("minRadius", v)}
+      />
+      <Slider
+        label="Max Radius"
+        value={lg.maxRadius ?? 40}
+        min={10}
+        max={120}
+        onChange={(v) => update("maxRadius", v)}
+      />
+    </div>
+  );
+}
+
+function ConnectionRulesEditor({
+  config,
+  onConfigChange,
+}: {
+  config: Partial<ParticleNetworkConfig>;
+  onConfigChange: (key: keyof ParticleNetworkConfig, value: unknown) => void;
+}) {
+  const categories = ["default", ...Object.keys(config.assets ?? {})];
+  const rules = config.connectionRules;
+  const hasRules = rules && ((rules.allow?.length ?? 0) > 0 || (rules.deny?.length ?? 0) > 0);
+
+  const updateRules = (updates: Partial<ConnectionRules>) => {
+    const next: ConnectionRules = {
+      allow: rules?.allow ?? [],
+      deny: rules?.deny ?? [],
+      ...updates,
+    };
+    onConfigChange("connectionRules", next);
+  };
+
+  const addPair = (list: "allow" | "deny") => {
+    const arr = rules?.[list] ?? [];
+    if (categories.length < 2) return;
+    const a = categories[0];
+    const b = categories[1];
+    const pair: [string, string] = a < b ? [a, b] : [b, a];
+    if (arr.some(([x, y]) => x === pair[0] && y === pair[1])) return;
+    updateRules({ [list]: [...arr, pair] });
+  };
+
+  const removePair = (list: "allow" | "deny", idx: number) => {
+    const arr = [...(rules?.[list] ?? [])];
+    arr.splice(idx, 1);
+    updateRules({ [list]: arr.length ? arr : undefined });
+  };
+
+  const changePair = (list: "allow" | "deny", idx: number, newPair: [string, string]) => {
+    const arr = [...(rules?.[list] ?? [])];
+    arr[idx] = newPair;
+    updateRules({ [list]: arr });
+  };
+
+  const clearRules = () => {
+    onConfigChange("connectionRules", undefined);
+  };
+
+  if (categories.length < 2) return null;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <label style={labelStyle}>Connection rules</label>
+      <p style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.5)", margin: "0 0 8px 0" }}>
+        Control which categories connect. default = circles; others = asset keys.
+      </p>
+      {!hasRules ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => addPair("allow")}
+            style={{ ...btnStyle, width: "100%", fontSize: "0.75rem" }}
+          >
+            + Allow only specific pairs
+          </button>
+          <button
+            type="button"
+            onClick={() => addPair("deny")}
+            style={{ ...btnStyle, width: "100%", fontSize: "0.75rem" }}
+          >
+            + Deny specific pairs
+          </button>
+        </div>
+      ) : (
+        <>
+          {(rules?.allow?.length ?? 0) > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.6)" }}>Allow only:</span>
+              {(rules?.allow ?? []).map((pair, i) => (
+                <div key={`allow-${i}`} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+                  <select
+                    value={pair[0]}
+                    onChange={(e) => changePair("allow", i, [e.target.value, pair[1]].sort() as [string, string])}
+                    style={selectStyle}
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <span style={{ color: "rgba(255,255,255,0.5)" }}>↔</span>
+                  <select
+                    value={pair[1]}
+                    onChange={(e) => changePair("allow", i, [pair[0], e.target.value].sort() as [string, string])}
+                    style={selectStyle}
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => removePair("allow", i)} style={{ ...btnStyle, padding: "4px 8px" }}>×</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => addPair("allow")} style={{ ...btnStyle, marginTop: 6, fontSize: "0.75rem" }}>+ Add</button>
+            </div>
+          )}
+          {(rules?.deny?.length ?? 0) > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.6)" }}>Deny:</span>
+              {(rules?.deny ?? []).map((pair, i) => (
+                <div key={`deny-${i}`} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+                  <select
+                    value={pair[0]}
+                    onChange={(e) => changePair("deny", i, [e.target.value, pair[1]].sort() as [string, string])}
+                    style={selectStyle}
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <span style={{ color: "rgba(255,255,255,0.5)" }}>↔</span>
+                  <select
+                    value={pair[1]}
+                    onChange={(e) => changePair("deny", i, [pair[0], e.target.value].sort() as [string, string])}
+                    style={selectStyle}
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => removePair("deny", i)} style={{ ...btnStyle, padding: "4px 8px" }}>×</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => addPair("deny")} style={{ ...btnStyle, marginTop: 6, fontSize: "0.75rem" }}>+ Add</button>
+            </div>
+          )}
+          <button type="button" onClick={clearRules} style={{ ...btnStyle, fontSize: "0.75rem", borderColor: "rgba(239,68,68,0.4)" }}>
+            Clear rules
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+const selectStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  padding: "6px 8px",
+  background: "rgba(30, 30, 40, 0.95)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 8,
+  color: "#fff",
+  fontSize: "0.8rem",
 };
 
 function ControlGroup({

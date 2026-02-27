@@ -37,6 +37,14 @@ const DEFAULT_CONFIG: Partial<ParticleNetworkConfig> = {
   gradientSmoothStops: 4,
   gradientFlowAngle: 45,
   gradientOrbitRadius: 0.3,
+  liquidGlassPercentage: 40,
+  liquidGlass: {
+    color: "#88ccff",
+    opacity: 0.6,
+    shadowStrength: 0.4,
+    minRadius: 20,
+    maxRadius: 40,
+  },
 };
 
 export default function App() {

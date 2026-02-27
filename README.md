@@ -134,6 +134,74 @@ function App() {
 | `mouseAttractAssets`     | string[]  | —                        | Asset keys whose particles follow the mouse. Others repel  |
 | `minParticleDistance`    | number    | —                        | Min distance (px). Particles repel when closer              |
 | `minParticleForce`       | number    | 0.5                      | Strength of particle repulsion (0–2)                       |
+| `connectionRules`        | object    | —                        | Control which categories connect (see Connection Rules)     |
+| `liquidGlass`            | object    | —                        | Liquid glass styling (see Liquid Glass)                      |
+| `liquidGlassPercentage` | number    | —                        | % of particles that render as liquid glass (0–100)          |
+| `liquidGlassCount`       | number    | —                        | Exact count of liquid glass particles                       |
+| `particleTypes`          | array     | —                        | Mix circle, asset, liquidGlass (see Particle Types)          |
+
+## Liquid Glass
+
+3D fluid spheres with blur + contrast for a gooey liquid feel. Each particle is rendered as a 3D sphere with shading, highlights, and blur. Overlapping blobs merge visually via the contrast filter.
+
+```js
+new ParticleNetwork(canvas, {
+  liquidGlassPercentage: 40,
+  liquidGlass: {
+    blur: 12,                 // blur radius (px) for fluid gooey effect
+    contrast: 25,            // container contrast for gooey merge
+    color: "#88ccff",
+    opacity: 0.6,
+    reflectionStrength: 0.85,
+    highlightPosition: "top-left",
+    highlightColor: "#ffffff",
+    shadowStrength: 0.4,
+    secondaryReflection: 0.25,
+    secondaryHighlightPosition: "bottom-right",
+  },
+});
+```
+
+## Particle Types
+
+Use `particleTypes` to mix circle, asset, and liquid glass particles with full control:
+
+```js
+new ParticleNetwork(canvas, {
+  particleTypes: [
+    { type: "circle", percentage: 50 },
+    { type: "liquidGlass", percentage: 30 },
+    { type: "asset", asset: "star", count: 20, liquidGlass: true },
+  ],
+  assets: { star: "https://..." },
+  liquidGlass: { mergeDistance: 40, color: "#88ccff", ... },
+});
+```
+
+- **`circle`**: Normal circles
+- **`liquidGlass`**: Liquid glass blobs (merge when close)
+- **`asset`**: Icons/images; use `liquidGlass: true` to combine with glass
+
+## Connection Rules
+
+Control which particle categories can connect to each other. Categories: `"default"` (normal circles) and asset keys (e.g. `"star"`, `"fa_solid_heart"`).
+
+```js
+new ParticleNetwork(canvas, {
+  particleAssets: [
+    { asset: "star", count: 20 },
+    { asset: "heart", count: 20 },
+  ],
+  assets: { star: "...", heart: "..." },
+  connectionRules: {
+    allow: [["default", "star"], ["star", "heart"]],  // only these pairs connect
+    deny: [["star", "heart"]],                         // or: all connect except these
+  },
+});
+```
+
+- **`allow`**: Only these category pairs connect. Omit or empty = all connect.
+- **`deny`**: These pairs never connect (applied after allow).
 
 ## Asset Particles
 
@@ -243,6 +311,9 @@ import type {
   ParticleNetworkConfig,
   Particle,
   GradientType,
+  ConnectionRules,
+  LiquidGlassConfig,
+  ParticleTypeEntry,
 } from "particle-network-bg";
 ```
 
