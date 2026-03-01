@@ -50,6 +50,35 @@ export type ParticleTypeEntry =
   | { type: "asset"; asset: string; count?: number; percentage?: number; liquidGlass?: boolean }
   | { type: "liquidGlass"; count?: number; percentage?: number };
 
+/** Configuration for a child particle that holds a UI component. */
+export interface ChildParticleConfig {
+  /** Unique identifier linking this particle to a React/DOM child. */
+  id: string;
+  /** Anchor X position (px). The particle will spring back toward this point. */
+  x: number;
+  /** Anchor Y position (px). */
+  y: number;
+  /** Particle radius (px). */
+  radius: number;
+  /** Spring force pulling back to anchor (0–1). Lower = more floaty. Default 0.05. */
+  anchorForce?: number;
+  /** Mouse influence multiplier (0–1). 0 = ignores mouse, 1 = full reaction. Default 0.1. */
+  mouseInfluence?: number;
+  /** Render as liquid glass particle. Default false. */
+  liquidGlass?: boolean;
+}
+
+/** Emitted position data for a child particle each frame. */
+export interface ChildParticlePosition {
+  x: number;
+  y: number;
+  radius: number;
+  /** Current computed radius (after pulse/depth scaling). */
+  currentRadius: number;
+  /** Blob rotation in radians (liquid glass only, 0 for normal). */
+  rotation: number;
+}
+
 export interface ParticleNetworkConfig {
   particleCount: number;
   minRadius: number;
@@ -139,6 +168,18 @@ export interface Particle {
   liquidGlass?: boolean;
   /** Blob deformation state — single shape, not layers. */
   blob?: BlobState;
+  /** Whether this particle hosts a child UI component. */
+  isChild?: boolean;
+  /** Unique ID linking to the child component (matches ChildParticleConfig.id). */
+  childId?: string;
+  /** Anchor X position the particle springs back to. */
+  anchorX?: number;
+  /** Anchor Y position the particle springs back to. */
+  anchorY?: number;
+  /** Spring force toward anchor (0–1). */
+  anchorForce?: number;
+  /** Mouse influence multiplier for child particles (0–1). */
+  mouseInfluence?: number;
 }
 
 const DEFAULT_CONFIG: ParticleNetworkConfig = {
@@ -263,6 +304,11 @@ export class ParticleNetwork {
   private boundHandleResize: () => void;
   private boundHandleMouseMove: (e: MouseEvent) => void;
   private boundHandleMouseLeave: () => void;
+  private childParticleConfigs: Map<string, ChildParticleConfig> = new Map();
+  private overlayContainer: HTMLDivElement | null = null;
+  private childOverlayElements: Map<string, HTMLDivElement> = new Map();
+  /** Called every frame with updated child particle positions. */
+  onChildUpdate: ((positions: Map<string, ChildParticlePosition>) => void) | null = null;
 
   constructor(canvas: HTMLCanvasElement, config: Partial<ParticleNetworkConfig> = {}) {
     this.canvas = canvas;
@@ -310,6 +356,55 @@ export class ParticleNetwork {
     this.gradientDiv.style.cssText =
       "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1;";
     this.canvas.parentElement?.insertBefore(this.gradientDiv, this.canvas);
+  }
+
+  private ensureOverlayContainer(): HTMLDivElement {
+    if (!this.overlayContainer) {
+      this.overlayContainer = document.createElement("div");
+      this.overlayContainer.style.cssText =
+        "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:hidden;";
+      this.canvas.parentElement?.appendChild(this.overlayContainer);
+    }
+    return this.overlayContainer;
+  }
+
+  /** Get or create the overlay div for a child particle. */
+  getChildOverlayElement(id: string): HTMLDivElement {
+    let el = this.childOverlayElements.get(id);
+    if (!el) {
+      const container = this.ensureOverlayContainer();
+      el = document.createElement("div");
+      el.style.cssText =
+        "position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;will-change:transform;";
+      el.dataset.childParticleId = id;
+      container.appendChild(el);
+      this.childOverlayElements.set(id, el);
+    }
+    return el;
+  }
+
+  /** Remove the overlay div for a child particle. */
+  private removeChildOverlayElement(id: string): void {
+    const el = this.childOverlayElements.get(id);
+    if (el) {
+      el.remove();
+      this.childOverlayElements.delete(id);
+    }
+  }
+
+  /** Sync all child overlay divs to their particle positions. Called each frame. */
+  private updateChildOverlays(): void {
+    for (const particle of this.particles) {
+      if (!particle.isChild || !particle.childId) continue;
+      const el = this.childOverlayElements.get(particle.childId);
+      if (!el) continue;
+      const r = particle.currentRadius ?? particle.radius;
+      const size = r * 2;
+      el.style.width = size + "px";
+      el.style.height = size + "px";
+      el.style.transform = `translate(${particle.x - r}px, ${particle.y - r}px)`;
+      el.style.borderRadius = "50%";
+    }
   }
 
 
@@ -544,6 +639,10 @@ export class ParticleNetwork {
     this.canvas.removeEventListener("mouseleave", this.boundHandleMouseLeave);
     this.gradientDiv?.remove();
     this.gradientDiv = null;
+    this.overlayContainer?.remove();
+    this.overlayContainer = null;
+    this.childOverlayElements.clear();
+    this.childParticleConfigs.clear();
     this.stop();
   }
 
@@ -569,6 +668,7 @@ export class ParticleNetwork {
   }
 
   private createParticles(): void {
+    const childParticles = this.particles.filter((p) => p.isChild);
     this.particles = [];
     const total = this.config.particleCount;
     for (let i = 0; i < total; i++) {
@@ -585,6 +685,7 @@ export class ParticleNetwork {
       });
     }
     this.assignParticleTypes();
+    this.particles.push(...childParticles);
   }
 
   private assignParticleTypes(): void {
@@ -793,8 +894,9 @@ export class ParticleNetwork {
           const force =
             (this.config.mouseRadius - distance) / this.config.mouseRadius;
           const angle = Math.atan2(dy, dx);
-          const fx = Math.cos(angle) * force * 0.5;
-          const fy = Math.sin(angle) * force * 0.5;
+          const mouseScale = particle.isChild ? (particle.mouseInfluence ?? 0.1) : 1;
+          const fx = Math.cos(angle) * force * 0.5 * mouseScale;
+          const fy = Math.sin(angle) * force * 0.5 * mouseScale;
           if (particle.mouseAttract) {
             particle.dx += fx;
             particle.dy += fy;
@@ -803,6 +905,16 @@ export class ParticleNetwork {
             particle.dy -= fy;
           }
         }
+      }
+
+      if (particle.isChild && particle.anchorX != null && particle.anchorY != null) {
+        const anchorF = particle.anchorForce ?? 0.05;
+        const adx = particle.anchorX - particle.x;
+        const ady = particle.anchorY - particle.y;
+        particle.dx += adx * anchorF;
+        particle.dy += ady * anchorF;
+        particle.dx *= 0.92;
+        particle.dy *= 0.92;
       }
 
       const minDist = this.config.minParticleDistance ?? 0;
@@ -826,19 +938,23 @@ export class ParticleNetwork {
         }
       }
 
-      if (particle.x < 0 || particle.x > this.canvas.width) {
-        particle.dx = -particle.dx;
-      }
-      if (particle.y < 0 || particle.y > this.canvas.height) {
-        particle.dy = -particle.dy;
+      if (!particle.isChild) {
+        if (particle.x < 0 || particle.x > this.canvas.width) {
+          particle.dx = -particle.dx;
+        }
+        if (particle.y < 0 || particle.y > this.canvas.height) {
+          particle.dy = -particle.dy;
+        }
       }
 
-      const speed = Math.sqrt(
-        particle.dx * particle.dx + particle.dy * particle.dy
-      );
-      if (speed > this.config.moveSpeed) {
-        particle.dx = (particle.dx / speed) * this.config.moveSpeed;
-        particle.dy = (particle.dy / speed) * this.config.moveSpeed;
+      if (!particle.isChild) {
+        const speed = Math.sqrt(
+          particle.dx * particle.dx + particle.dy * particle.dy
+        );
+        if (speed > this.config.moveSpeed) {
+          particle.dx = (particle.dx / speed) * this.config.moveSpeed;
+          particle.dy = (particle.dy / speed) * this.config.moveSpeed;
+        }
       }
     });
   }
@@ -1173,6 +1289,81 @@ export class ParticleNetwork {
       .join(",");
   }
 
+  /** Register a child particle. Creates a new particle with anchor behavior. */
+  addChildParticle(config: ChildParticleConfig): void {
+    if (this.childParticleConfigs.has(config.id)) {
+      this.removeChildParticle(config.id);
+    }
+    this.childParticleConfigs.set(config.id, config);
+
+    const particle: Particle = {
+      x: config.x,
+      y: config.y,
+      dx: 0,
+      dy: 0,
+      radius: config.radius,
+      z: 0.8 + Math.random() * 0.2,
+      dz: (Math.random() - 0.5) * this.config.depthSpeed * 2,
+      isChild: true,
+      childId: config.id,
+      anchorX: config.x,
+      anchorY: config.y,
+      anchorForce: config.anchorForce ?? 0.05,
+      mouseInfluence: config.mouseInfluence ?? 0.1,
+    };
+
+    if (config.liquidGlass) {
+      particle.liquidGlass = true;
+      this.initBlob(particle);
+    }
+
+    this.particles.push(particle);
+  }
+
+  /** Remove a child particle by ID. */
+  removeChildParticle(id: string): void {
+    this.childParticleConfigs.delete(id);
+    this.removeChildOverlayElement(id);
+    const idx = this.particles.findIndex((p) => p.childId === id);
+    if (idx !== -1) this.particles.splice(idx, 1);
+  }
+
+  /** Update a child particle's anchor position and/or config. */
+  updateChildParticle(id: string, updates: Partial<Omit<ChildParticleConfig, "id">>): void {
+    const config = this.childParticleConfigs.get(id);
+    if (!config) return;
+    Object.assign(config, updates);
+
+    const particle = this.particles.find((p) => p.childId === id);
+    if (!particle) return;
+
+    if (updates.x !== undefined) particle.anchorX = updates.x;
+    if (updates.y !== undefined) particle.anchorY = updates.y;
+    if (updates.radius !== undefined) particle.radius = updates.radius;
+    if (updates.anchorForce !== undefined) particle.anchorForce = updates.anchorForce;
+    if (updates.mouseInfluence !== undefined) particle.mouseInfluence = updates.mouseInfluence;
+    if (updates.liquidGlass !== undefined) {
+      particle.liquidGlass = updates.liquidGlass;
+      if (updates.liquidGlass && !particle.blob) this.initBlob(particle);
+    }
+  }
+
+  /** Get current positions of all child particles. */
+  getChildParticlePositions(): Map<string, ChildParticlePosition> {
+    const positions = new Map<string, ChildParticlePosition>();
+    for (const particle of this.particles) {
+      if (!particle.isChild || !particle.childId) continue;
+      positions.set(particle.childId, {
+        x: particle.x,
+        y: particle.y,
+        radius: particle.radius,
+        currentRadius: particle.currentRadius ?? particle.radius,
+        rotation: particle.blob?.rotation ?? 0,
+      });
+    }
+    return positions;
+  }
+
   stop(): void {
     this.isRunning = false;
     if (this.animationId !== null) {
@@ -1194,6 +1385,13 @@ export class ParticleNetwork {
     this.updateParticles();
     this.drawParticles();
     this.drawConnections();
+
+    if (this.childParticleConfigs.size > 0) {
+      this.updateChildOverlays();
+      if (this.onChildUpdate) {
+        this.onChildUpdate(this.getChildParticlePositions());
+      }
+    }
 
     if (this.isRunning) {
       this.animationId = requestAnimationFrame(() => this.animate());
