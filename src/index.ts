@@ -58,8 +58,16 @@ export interface ChildParticleConfig {
   x: number;
   /** Anchor Y position (px). */
   y: number;
-  /** Particle radius (px). */
+  /** Particle radius (px). Used for physics and as size when width/height not set. */
   radius: number;
+  /** Rectangular width (px). When set with height, the particle renders as a rounded rectangle. */
+  width?: number;
+  /** Rectangular height (px). */
+  height?: number;
+  /** Border radius (px) for rectangular shapes. Default: fully round. */
+  borderRadius?: number;
+  /** CSS overflow for the child content container. Default "hidden". */
+  overflow?: string;
   /** Spring force pulling back to anchor (0–1). Lower = more floaty. Default 0.05. */
   anchorForce?: number;
   /** Mouse influence multiplier (0–1). 0 = ignores mouse, 1 = full reaction. Default 0.1. */
@@ -73,8 +81,9 @@ export interface ChildParticlePosition {
   x: number;
   y: number;
   radius: number;
-  /** Current computed radius (after pulse/depth scaling). */
   currentRadius: number;
+  width?: number;
+  height?: number;
   /** Blob rotation in radians (liquid glass only, 0 for normal). */
   rotation: number;
 }
@@ -180,6 +189,18 @@ export interface Particle {
   anchorForce?: number;
   /** Mouse influence multiplier for child particles (0–1). */
   mouseInfluence?: number;
+  /** Rectangular width (px). Particle is rectangular when both width and height are set. */
+  width?: number;
+  /** Rectangular height (px). */
+  height?: number;
+  /** Border radius (px) for rectangular particles. */
+  borderRadius?: number;
+  /** CSS overflow for the child content overlay. */
+  overflow?: string;
+  /** Smoothed x for overlay positioning. */
+  smoothX?: number;
+  /** Smoothed y for overlay positioning. */
+  smoothY?: number;
 }
 
 const DEFAULT_CONFIG: ParticleNetworkConfig = {
@@ -398,12 +419,25 @@ export class ParticleNetwork {
       if (!particle.isChild || !particle.childId) continue;
       const el = this.childOverlayElements.get(particle.childId);
       if (!el) continue;
-      const r = particle.currentRadius ?? particle.radius;
-      const size = r * 2;
-      el.style.width = size + "px";
-      el.style.height = size + "px";
-      el.style.transform = `translate(${particle.x - r}px, ${particle.y - r}px)`;
-      el.style.borderRadius = "50%";
+
+      const px = particle.smoothX ?? particle.x;
+      const py = particle.smoothY ?? particle.y;
+      const isRect = particle.width != null && particle.height != null;
+      const w = isRect ? particle.width! : (particle.currentRadius ?? particle.radius) * 2;
+      const h = isRect ? particle.height! : (particle.currentRadius ?? particle.radius) * 2;
+
+      el.style.width = w + "px";
+      el.style.height = h + "px";
+      el.style.transform = `translate(${px - w / 2}px, ${py - h / 2}px)`;
+
+      if (isRect) {
+        const br = particle.borderRadius ?? Math.min(w, h) / 2;
+        el.style.borderRadius = br + "px";
+      } else {
+        el.style.borderRadius = "50%";
+      }
+
+      el.style.overflow = particle.overflow ?? "hidden";
     }
   }
 
@@ -802,7 +836,8 @@ export class ParticleNetwork {
   }
 
   private initBlob(p: Particle): void {
-    const pointCount = 12;
+    const isRect = p.width != null && p.height != null;
+    const pointCount = isRect ? 28 : 12;
     const modeCount = 3;
     const freqs: number[] = [];
     const amps: number[] = [];
@@ -868,18 +903,22 @@ export class ParticleNetwork {
         }
       }
 
-      if (this.config.pulseEnabled) {
-        this.pulseAngle += this.config.pulseSpeed;
-        const pulseScale = Math.sin(this.pulseAngle) * 0.5 + 1;
-        particle.currentRadius = particle.radius * pulseScale;
-      } else {
+      if (particle.isChild) {
         particle.currentRadius = particle.radius;
-      }
+      } else {
+        if (this.config.pulseEnabled) {
+          this.pulseAngle += this.config.pulseSpeed;
+          const pulseScale = Math.sin(this.pulseAngle) * 0.5 + 1;
+          particle.currentRadius = particle.radius * pulseScale;
+        } else {
+          particle.currentRadius = particle.radius;
+        }
 
-      if (this.config.depthEffectEnabled) {
-        const depthScale = 0.4 + 0.6 * particle.z;
-        particle.currentRadius =
-          (particle.currentRadius ?? particle.radius) * depthScale;
+        if (this.config.depthEffectEnabled) {
+          const depthScale = 0.4 + 0.6 * particle.z;
+          particle.currentRadius =
+            (particle.currentRadius ?? particle.radius) * depthScale;
+        }
       }
 
       particle.x += particle.dx;
@@ -913,8 +952,8 @@ export class ParticleNetwork {
         const ady = particle.anchorY - particle.y;
         particle.dx += adx * anchorF;
         particle.dy += ady * anchorF;
-        particle.dx *= 0.92;
-        particle.dy *= 0.92;
+        particle.dx *= 0.7;
+        particle.dy *= 0.7;
       }
 
       const minDist = this.config.minParticleDistance ?? 0;
@@ -930,10 +969,11 @@ export class ParticleNetwork {
           const gap = dist - r1 - r2;
           if (gap < minDist && dist > 0.001) {
             const strength = ((minDist - gap) / minDist) * minForce;
+            const repulsionScale = particle.isChild ? 0.1 : 1;
             const ux = -dx / dist;
             const uy = -dy / dist;
-            particle.dx += ux * strength;
-            particle.dy += uy * strength;
+            particle.dx += ux * strength * repulsionScale;
+            particle.dy += uy * strength * repulsionScale;
           }
         }
       }
@@ -955,6 +995,14 @@ export class ParticleNetwork {
           particle.dx = (particle.dx / speed) * this.config.moveSpeed;
           particle.dy = (particle.dy / speed) * this.config.moveSpeed;
         }
+      }
+
+      if (particle.isChild) {
+        const smoothing = 0.12;
+        if (particle.smoothX == null) particle.smoothX = particle.x;
+        if (particle.smoothY == null) particle.smoothY = particle.y;
+        particle.smoothX += (particle.x - particle.smoothX) * smoothing;
+        particle.smoothY += (particle.y - particle.smoothY) * smoothing;
       }
     });
   }
@@ -1010,6 +1058,55 @@ export class ParticleNetwork {
     this.ctx.closePath();
   }
 
+  /**
+   * Trace a blob path for a rectangular particle using superellipse interpolation.
+   * roundness: 0 = sharp rectangle, 1 = ellipse.
+   */
+  private traceRectBlobPath(
+    cx: number, cy: number,
+    halfW: number, halfH: number,
+    roundness: number,
+    blob: BlobState
+  ): void {
+    const n = blob.pointCount;
+    const k = Math.max(0.15, Math.min(1.0, roundness));
+    const sx = blob.mouseStretchX;
+    const sy = blob.mouseStretchY;
+    const pts: { x: number; y: number }[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * Math.PI * 2;
+      const ra = angle + blob.rotation;
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+      const signX = cosA >= 0 ? 1 : -1;
+      const signY = sinA >= 0 ? 1 : -1;
+      const bx = signX * Math.pow(Math.abs(cosA) + 1e-9, k) * halfW;
+      const by = signY * Math.pow(Math.abs(sinA) + 1e-9, k) * halfH;
+
+      let deform = 0;
+      for (let m = 0; m < blob.freqs.length; m++) {
+        deform += blob.amps[m] * Math.sin(blob.freqs[m] * ra + blob.phases[m]);
+      }
+      const scale = 1 + deform;
+      let px = cx + bx * scale;
+      let py = cy + by * scale;
+      px += sx * Math.cos(angle) * Math.max(0, Math.cos(angle));
+      py += sy * Math.sin(angle) * Math.max(0, Math.sin(angle));
+      pts.push({ x: px, y: py });
+    }
+
+    this.ctx.beginPath();
+    const last = pts[n - 1];
+    const first = pts[0];
+    this.ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
+    for (let i = 0; i < n; i++) {
+      const next = pts[(i + 1) % n];
+      this.ctx.quadraticCurveTo(pts[i].x, pts[i].y, (pts[i].x + next.x) / 2, (pts[i].y + next.y) / 2);
+    }
+    this.ctx.closePath();
+  }
+
   private updateBlobMouse(particle: Particle): void {
     const blob = particle.blob;
     if (!blob) return;
@@ -1046,6 +1143,7 @@ export class ParticleNetwork {
     const blob = particle.blob!;
     const cx = particle.x;
     const cy = particle.y;
+    const isRect = particle.width != null && particle.height != null;
 
     let opacity = (lg.opacity ?? DEFAULT_LIQUID_GLASS.opacity) * this.config.particleOpacity;
     if (this.config.depthEffectEnabled) {
@@ -1066,8 +1164,8 @@ export class ParticleNetwork {
     const baseB = parseInt(color.slice(5, 7), 16);
     const shadowStr = lg.shadowStrength ?? DEFAULT_LIQUID_GLASS.shadowStrength;
 
-    // Per-drop drifting highlight position
-    const hlDist = r * 0.35;
+    const gradR = isRect ? Math.max(particle.width!, particle.height!) / 2 : r;
+    const hlDist = gradR * 0.35;
     const hlX = cx + Math.cos(blob.hlAngle) * hlDist;
     const hlY = cy + Math.sin(blob.hlAngle) * hlDist;
 
@@ -1081,8 +1179,8 @@ export class ParticleNetwork {
     this.ctx.save();
 
     const grad = this.ctx.createRadialGradient(
-      hlX, hlY, r * 0.05,
-      cx, cy, r * 1.05
+      hlX, hlY, gradR * 0.05,
+      cx, cy, gradR * 1.05
     );
     grad.addColorStop(0,    `rgba(${lr},${lgr},${lb}, ${opacity * 0.95})`);
     grad.addColorStop(0.4,  `rgba(${baseR},${baseG},${baseB}, ${opacity * 0.8})`);
@@ -1090,7 +1188,18 @@ export class ParticleNetwork {
     grad.addColorStop(1,    `rgba(${dr},${dg},${db}, ${opacity * 0.25})`);
 
     this.ctx.fillStyle = grad;
-    this.traceBlobPath(cx, cy, r, blob);
+
+    if (isRect) {
+      const halfW = particle.width! / 2;
+      const halfH = particle.height! / 2;
+      const minDim = Math.min(halfW, halfH);
+      const roundness = particle.borderRadius != null
+        ? Math.min(particle.borderRadius / minDim, 1)
+        : 0.3;
+      this.traceRectBlobPath(cx, cy, halfW, halfH, roundness, blob);
+    } else {
+      this.traceBlobPath(cx, cy, r, blob);
+    }
     this.ctx.fill();
 
     this.ctx.restore();
@@ -1144,6 +1253,17 @@ export class ParticleNetwork {
         } else {
           this.ctx.drawImage(img, x, y, size, size);
         }
+      } else if (particle.isChild && particle.width != null && particle.height != null) {
+        this.ctx.globalAlpha = opacity;
+        this.ctx.fillStyle = defaultColor;
+        const w = particle.width;
+        const h = particle.height;
+        const br = particle.borderRadius ?? Math.min(w, h) / 2;
+        const x = particle.x - w / 2;
+        const y = particle.y - h / 2;
+        this.ctx.beginPath();
+        this.ctx.roundRect(x, y, w, h, br);
+        this.ctx.fill();
       } else {
         this.ctx.globalAlpha = opacity;
         this.ctx.fillStyle = defaultColor;
@@ -1310,6 +1430,12 @@ export class ParticleNetwork {
       anchorY: config.y,
       anchorForce: config.anchorForce ?? 0.05,
       mouseInfluence: config.mouseInfluence ?? 0.1,
+      width: config.width,
+      height: config.height,
+      borderRadius: config.borderRadius,
+      overflow: config.overflow,
+      smoothX: config.x,
+      smoothY: config.y,
     };
 
     if (config.liquidGlass) {
@@ -1342,6 +1468,10 @@ export class ParticleNetwork {
     if (updates.radius !== undefined) particle.radius = updates.radius;
     if (updates.anchorForce !== undefined) particle.anchorForce = updates.anchorForce;
     if (updates.mouseInfluence !== undefined) particle.mouseInfluence = updates.mouseInfluence;
+    if (updates.width !== undefined) particle.width = updates.width;
+    if (updates.height !== undefined) particle.height = updates.height;
+    if (updates.borderRadius !== undefined) particle.borderRadius = updates.borderRadius;
+    if (updates.overflow !== undefined) particle.overflow = updates.overflow;
     if (updates.liquidGlass !== undefined) {
       particle.liquidGlass = updates.liquidGlass;
       if (updates.liquidGlass && !particle.blob) this.initBlob(particle);
@@ -1354,10 +1484,12 @@ export class ParticleNetwork {
     for (const particle of this.particles) {
       if (!particle.isChild || !particle.childId) continue;
       positions.set(particle.childId, {
-        x: particle.x,
-        y: particle.y,
+        x: particle.smoothX ?? particle.x,
+        y: particle.smoothY ?? particle.y,
         radius: particle.radius,
         currentRadius: particle.currentRadius ?? particle.radius,
+        width: particle.width,
+        height: particle.height,
         rotation: particle.blob?.rotation ?? 0,
       });
     }
