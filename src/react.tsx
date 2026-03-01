@@ -88,6 +88,14 @@ export interface ChildParticleProps {
   x: number;
   y: number;
   radius: number;
+  /** Rectangular width (px). When set with height, particle is rectangular. */
+  width?: number;
+  /** Rectangular height (px). */
+  height?: number;
+  /** Border radius (px) for rectangular shapes. Default: fully round. */
+  borderRadius?: number;
+  /** CSS overflow for child content. Default "hidden". */
+  overflow?: string;
   /** Spring force pulling back to anchor (0-1). Default 0.05. */
   anchorForce?: number;
   /** Mouse influence multiplier (0-1). Default 0.1. */
@@ -106,6 +114,14 @@ export interface GlassChildParticleProps {
   x: number;
   y: number;
   radius: number;
+  /** Rectangular width (px). When set with height, particle is rectangular. */
+  width?: number;
+  /** Rectangular height (px). */
+  height?: number;
+  /** Border radius (px) for rectangular shapes. Default: fully round. */
+  borderRadius?: number;
+  /** CSS overflow for child content. Default "hidden". */
+  overflow?: string;
   /** Spring force pulling back to anchor (0-1). Default 0.05. */
   anchorForce?: number;
   /** Mouse influence multiplier (0-1). Default 0.1. */
@@ -130,6 +146,10 @@ function BaseChildParticle({
   x,
   y,
   radius,
+  width,
+  height,
+  borderRadius,
+  overflow,
   anchorForce,
   mouseInfluence,
   liquidGlass,
@@ -142,7 +162,10 @@ function BaseChildParticle({
 
   useEffect(() => {
     if (!instance) return;
-    instance.addChildParticle({ id, x, y, radius, anchorForce, mouseInfluence, liquidGlass });
+    instance.addChildParticle({
+      id, x, y, radius, width, height, borderRadius, overflow,
+      anchorForce, mouseInfluence, liquidGlass,
+    });
     setOverlayEl(instance.getChildOverlayElement(id));
     return () => {
       instance.removeChildParticle(id);
@@ -152,10 +175,18 @@ function BaseChildParticle({
 
   useEffect(() => {
     if (!instance || !overlayEl) return;
-    instance.updateChildParticle(id, { x, y, radius, anchorForce, mouseInfluence, liquidGlass });
-  }, [instance, id, x, y, radius, anchorForce, mouseInfluence, liquidGlass]);
+    instance.updateChildParticle(id, {
+      x, y, radius, width, height, borderRadius, overflow,
+      anchorForce, mouseInfluence, liquidGlass,
+    });
+  }, [instance, id, x, y, radius, width, height, borderRadius, overflow, anchorForce, mouseInfluence, liquidGlass]);
 
   if (!overlayEl) return null;
+
+  const isRect = width != null && height != null;
+  const portalBorderRadius = isRect
+    ? (borderRadius ?? Math.min(width!, height!) / 2) + "px"
+    : "50%";
 
   return createPortal(
     <div
@@ -166,8 +197,8 @@ function BaseChildParticle({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        overflow: "hidden",
-        borderRadius: "50%",
+        borderRadius: portalBorderRadius,
+        overflow: overflow ?? "hidden",
         ...style,
       }}
     >
