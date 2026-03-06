@@ -15,10 +15,10 @@ Run locally:
 
 ```bash
 # Vanilla
-cd lib/demo/vanilla && npm install && npm run dev
+cd demo/vanilla && npm install && npm run dev
 
 # React
-cd lib/demo/react && npm install && npm run dev
+cd demo/react && npm install && npm run dev
 ```
 
 ## Install
@@ -153,11 +153,13 @@ new ParticleNetwork(canvas, {
     color: "#88ccff",
     opacity: 0.6,
     reflectionStrength: 0.85,
-    highlightPosition: "top-left",
+    highlightPosition: "top-left", // "top-left" | "top" | "top-right" | "center" | "bottom-right"
     highlightColor: "#ffffff",
     shadowStrength: 0.4,
     secondaryReflection: 0.25,
     secondaryHighlightPosition: "bottom-right",
+    minRadius: 20,            // min size for liquid glass particles (overrides root minRadius)
+    maxRadius: 40,            // max size for liquid glass particles (overrides root maxRadius)
   },
 });
 ```
@@ -174,7 +176,7 @@ new ParticleNetwork(canvas, {
     { type: "asset", asset: "star", count: 20, liquidGlass: true },
   ],
   assets: { star: "https://..." },
-  liquidGlass: { mergeDistance: 40, color: "#88ccff", ... },
+  liquidGlass: { color: "#88ccff", blur: 12, contrast: 25, ... },
 });
 ```
 
@@ -289,12 +291,140 @@ new ParticleNetwork(canvas, {
 });
 ```
 
+## Child Particles
+
+Attach real UI components (React nodes or DOM elements) as physics particles. Each child particle has an anchor point it springs back to, reacts to the mouse, and can optionally render as a liquid glass blob.
+
+### React
+
+Use `ChildParticle` or `GlassChildParticle` as children of `ParticleNetworkBg`:
+
+```jsx
+import { ParticleNetworkBg, ChildParticle, GlassChildParticle } from "particle-network-bg/react";
+
+function App() {
+  return (
+    <ParticleNetworkBg config={{ particleCount: 60 }} style={{ width: "100%", height: "100vh" }}>
+      {/* Normal circle particle with a React child */}
+      <ChildParticle id="card-1" x={300} y={200} radius={50}>
+        <div style={{ color: "#fff", fontSize: 12 }}>Hello</div>
+      </ChildParticle>
+
+      {/* Liquid glass blob particle */}
+      <GlassChildParticle id="clock" x={600} y={400} radius={60}>
+        <span>🕐</span>
+      </GlassChildParticle>
+
+      {/* Rectangular child particle */}
+      <ChildParticle id="widget" x={900} y={300} width={160} height={80} borderRadius={16}>
+        <div>Widget content</div>
+      </ChildParticle>
+    </ParticleNetworkBg>
+  );
+}
+```
+
+### `ChildParticle` / `GlassChildParticle` Props
+
+| Prop             | Type      | Default  | Description                                                   |
+| ---------------- | --------- | -------- | ------------------------------------------------------------- |
+| `id`             | string    | required | Unique identifier                                             |
+| `x`              | number    | required | Anchor X position (px)                                        |
+| `y`              | number    | required | Anchor Y position (px)                                        |
+| `radius`         | number    | required | Particle radius (px). Used for physics and as size            |
+| `width`          | number    | —        | Rectangular width (px). Set with `height` for rect shape      |
+| `height`         | number    | —        | Rectangular height (px)                                       |
+| `borderRadius`   | number    | —        | Border radius (px) for rectangular shapes. Default: fully round |
+| `overflow`       | string    | `"hidden"` | CSS overflow for the child content container                |
+| `anchorForce`    | number    | `0.05`   | Spring force pulling back to anchor (0–1). Lower = more floaty |
+| `mouseInfluence` | number    | `0.1`    | Mouse influence multiplier (0–1). 0 = ignores mouse           |
+| `children`       | ReactNode | —        | Content to render inside the particle                         |
+| `style`          | CSSProperties | —   | Style applied to the inner wrapper div                        |
+| `className`      | string    | —        | Class applied to the inner wrapper div                        |
+
+### Vanilla JS
+
+Use `addChildParticle` / `removeChildParticle` on the `ParticleNetwork` instance directly:
+
+```js
+const network = new ParticleNetwork(canvas, { particleCount: 60 });
+network.start();
+
+// Add a child particle
+network.addChildParticle({
+  id: "card-1",
+  x: 300,
+  y: 200,
+  radius: 50,
+  anchorForce: 0.05,
+  mouseInfluence: 0.1,
+  liquidGlass: false,
+});
+
+// Update its anchor (e.g. on scroll/resize)
+network.updateChildParticle("card-1", { x: 400, y: 250 });
+
+// Get current positions every frame via callback
+network.onChildUpdate = (positions) => {
+  const pos = positions.get("card-1");
+  // pos.x, pos.y, pos.radius, pos.currentRadius, pos.width, pos.height, pos.rotation
+  myDomEl.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+};
+
+// Remove
+network.removeChildParticle("card-1");
+```
+
+### Child Particle API
+
+| Method / Property                              | Description                                                          |
+| ---------------------------------------------- | -------------------------------------------------------------------- |
+| `addChildParticle(config)`                     | Register a child particle. Creates the particle with anchor physics. |
+| `removeChildParticle(id)`                      | Remove a child particle by ID.                                       |
+| `updateChildParticle(id, updates)`             | Update anchor position or any config property at runtime.            |
+| `getChildParticlePositions()`                  | Returns a `Map<string, ChildParticlePosition>` with current state.   |
+| `onChildUpdate`                                | Callback fired every frame: `(positions: Map<string, ChildParticlePosition>) => void` |
+| `getChildOverlayElement(id)`                   | Returns the DOM div overlay for a child particle (for manual use).   |
+
+### Types
+
+```ts
+import type { ChildParticleConfig, ChildParticlePosition } from "particle-network-bg";
+
+interface ChildParticleConfig {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  width?: number;
+  height?: number;
+  borderRadius?: number;
+  overflow?: string;
+  anchorForce?: number;
+  mouseInfluence?: number;
+  liquidGlass?: boolean;
+}
+
+interface ChildParticlePosition {
+  x: number;
+  y: number;
+  radius: number;
+  currentRadius: number;
+  width?: number;
+  height?: number;
+  rotation: number; // blob rotation in radians (liquid glass only, 0 for normal)
+}
+```
+
 ## API
 
 ### React (`particle-network-bg/react`)
 
-- `ParticleNetworkBg` – Wrapper component. Props: `config`, `style`, `className`
+- `ParticleNetworkBg` – Wrapper component. Props: `config`, `style`, `className`, `children` (for `ChildParticle` / `GlassChildParticle`)
 - `useParticleNetwork(config?)` – Hook that returns a canvas ref
+- `ChildParticle` – React child particle component (see [Child Particles](#child-particles))
+- `GlassChildParticle` – Liquid glass variant of `ChildParticle`
+- `ParticleNetworkContext` – React context exposing the `ParticleNetwork` instance; use `useContext(ParticleNetworkContext)` inside children of `ParticleNetworkBg` for direct instance access
 
 ### `ParticleNetwork` (vanilla)
 
@@ -313,7 +443,11 @@ import type {
   GradientType,
   ConnectionRules,
   LiquidGlassConfig,
+  LiquidGlassHighlightPosition,
   ParticleTypeEntry,
+  ParticleAssetConfig,
+  ChildParticleConfig,
+  ChildParticlePosition,
 } from "particle-network-bg";
 ```
 
