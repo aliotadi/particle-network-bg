@@ -166,23 +166,56 @@ new ParticleNetwork(canvas, {
 
 ## Particle Types
 
-Use `particleTypes` to mix circle, asset, and liquid glass particles with full control:
+Use `particleTypes` to mix circle, asset, and liquid glass particles with full control. Each entry can carry **per-type overrides** that shadow the global config:
 
 ```js
 new ParticleNetwork(canvas, {
+  particleCount: 100,
+  particleColor: "#000000",
+  particleOpacity: 1,
+  pulseEnabled: false,
   particleTypes: [
-    { type: "circle", percentage: 50 },
-    { type: "liquidGlass", percentage: 30 },
-    { type: "asset", asset: "star", count: 20, liquidGlass: true },
+    // 50% circles — override color and enable pulse just for these
+    { type: "circle", percentage: 50, color: "#ff6600", pulse: true, pulseSpeed: 0.03 },
+    // 30% liquid glass — override glass config just for these
+    { type: "liquidGlass", percentage: 30, liquidGlass: { color: "#00ccff", opacity: 0.8 } },
+    // 20 asset particles with custom opacity
+    { type: "asset", asset: "star", count: 20, opacity: 0.7 },
   ],
   assets: { star: "https://..." },
-  liquidGlass: { color: "#88ccff", blur: 12, contrast: 25, ... },
+  liquidGlass: { color: "#88ccff", blur: 12, contrast: 25 },
 });
 ```
 
-- **`circle`**: Normal circles
-- **`liquidGlass`**: Liquid glass blobs (merge when close)
-- **`asset`**: Icons/images; use `liquidGlass: true` to combine with glass
+Per-type values are a **shallow override** on top of the root config. Omitted fields fall back to the global value, so existing usage without `particleTypes` stays unchanged.
+
+### Circle type overrides
+
+| Field        | Type    | Description                                  |
+| ------------ | ------- | -------------------------------------------- |
+| `color`      | string  | Particle color (hex). Overrides `particleColor` |
+| `opacity`    | number  | Particle opacity (0–1). Overrides `particleOpacity` |
+| `minRadius`  | number  | Min radius (px). Overrides root `minRadius`  |
+| `maxRadius`  | number  | Max radius (px). Overrides root `maxRadius`  |
+| `pulse`      | boolean | Enable pulse. Overrides `pulseEnabled`       |
+| `pulseSpeed` | number  | Pulse speed. Overrides root `pulseSpeed`     |
+
+### Liquid glass type overrides
+
+| Field        | Type                      | Description                                                    |
+| ------------ | ------------------------- | -------------------------------------------------------------- |
+| `liquidGlass`| `Partial<LiquidGlassConfig>` | Shallow-merged over root `liquidGlass` (color, opacity, minRadius, etc.) |
+| `pulse`      | boolean                   | Enable pulse. Overrides `pulseEnabled`                         |
+| `pulseSpeed` | number                    | Pulse speed. Overrides root `pulseSpeed`                       |
+
+### Asset type overrides
+
+| Field        | Type                                     | Description                                                       |
+| ------------ | ---------------------------------------- | ----------------------------------------------------------------- |
+| `liquidGlass`| `boolean \| Partial<LiquidGlassConfig>`  | `true` for glass rendering, or partial config for per-type glass  |
+| `opacity`    | number                                   | Particle opacity (0–1). Overrides `particleOpacity`               |
+| `pulse`      | boolean                                  | Enable pulse. Overrides `pulseEnabled`                            |
+| `pulseSpeed` | number                                   | Pulse speed. Overrides root `pulseSpeed`                          |
 
 ## Connection Rules
 
@@ -445,6 +478,9 @@ import type {
   LiquidGlassConfig,
   LiquidGlassHighlightPosition,
   ParticleTypeEntry,
+  CircleTypeEntry,
+  LiquidGlassTypeEntry,
+  AssetTypeEntry,
   ParticleAssetConfig,
   ChildParticleConfig,
   ChildParticlePosition,

@@ -44,11 +44,40 @@ export interface LiquidGlassConfig {
   maxRadius?: number;
 }
 
-/** Particle type entry for mixing circle, asset, liquidGlass. */
-export type ParticleTypeEntry =
-  | { type: "circle"; count?: number; percentage?: number }
-  | { type: "asset"; asset: string; count?: number; percentage?: number; liquidGlass?: boolean }
-  | { type: "liquidGlass"; count?: number; percentage?: number };
+export interface CircleTypeEntry {
+  type: "circle";
+  percentage?: number;
+  count?: number;
+  color?: string;
+  opacity?: number;
+  minRadius?: number;
+  maxRadius?: number;
+  pulse?: boolean;
+  pulseSpeed?: number;
+}
+
+export interface LiquidGlassTypeEntry {
+  type: "liquidGlass";
+  percentage?: number;
+  count?: number;
+  liquidGlass?: Partial<LiquidGlassConfig>;
+  pulse?: boolean;
+  pulseSpeed?: number;
+}
+
+export interface AssetTypeEntry {
+  type: "asset";
+  asset: string;
+  percentage?: number;
+  count?: number;
+  liquidGlass?: boolean | Partial<LiquidGlassConfig>;
+  opacity?: number;
+  pulse?: boolean;
+  pulseSpeed?: number;
+}
+
+/** Particle type entry for mixing circle, asset, liquidGlass with optional per-type overrides. */
+export type ParticleTypeEntry = CircleTypeEntry | LiquidGlassTypeEntry | AssetTypeEntry;
 
 /** Configuration for a child particle that holds a UI component. */
 export interface ChildParticleConfig {
@@ -197,6 +226,8 @@ export interface Particle {
   borderRadius?: number;
   /** CSS overflow for the child content overlay. */
   overflow?: string;
+  /** Per-type config entry (shallow overrides root config). */
+  typeConfig?: ParticleTypeEntry;
   /** Smoothed x for overlay positioning. */
   smoothX?: number;
   /** Smoothed y for overlay positioning. */
@@ -727,10 +758,11 @@ export class ParticleNetwork {
     this.particles.forEach((p) => {
       delete p.assetId;
       delete p.liquidGlass;
+      delete p.typeConfig;
     });
 
     if (particleTypes?.length) {
-      const counts: { assetId?: string; liquidGlass: boolean; count: number }[] = [];
+      const counts: { entry: ParticleTypeEntry; assetId?: string; liquidGlass: boolean; count: number }[] = [];
       for (const pt of particleTypes) {
         let count: number;
         if (pt.count !== undefined) {
@@ -740,15 +772,16 @@ export class ParticleNetwork {
         }
         if (count > 0) {
           if (pt.type === "circle") {
-            counts.push({ liquidGlass: false, count });
+            counts.push({ entry: pt, liquidGlass: false, count });
           } else if (pt.type === "asset") {
             counts.push({
+              entry: pt,
               assetId: pt.asset,
-              liquidGlass: pt.liquidGlass ?? false,
+              liquidGlass: !!pt.liquidGlass,
               count,
             });
           } else {
-            counts.push({ liquidGlass: true, count });
+            counts.push({ entry: pt, liquidGlass: true, count });
           }
         }
       }
@@ -761,9 +794,10 @@ export class ParticleNetwork {
       }
 
       let idx = 0;
-      for (const { assetId, liquidGlass, count } of counts) {
+      for (const { entry, assetId, liquidGlass, count } of counts) {
         for (let c = 0; c < count && idx < indices.length; c++, idx++) {
           const p = this.particles[indices[idx]];
+          p.typeConfig = entry;
           if (assetId) p.assetId = assetId;
           p.liquidGlass = liquidGlass;
           if (liquidGlass) this.resizeAsLiquidGlass(p);
@@ -828,8 +862,10 @@ export class ParticleNetwork {
 
   private resizeAsLiquidGlass(p: Particle): void {
     const lg = this.getLiquidGlassConfig();
-    const min = lg.minRadius ?? DEFAULT_LIQUID_GLASS.minRadius;
-    const max = lg.maxRadius ?? DEFAULT_LIQUID_GLASS.maxRadius;
+    const tc = p.typeConfig;
+    const perTypeLg = tc && "liquidGlass" in tc && typeof tc.liquidGlass === "object" ? tc.liquidGlass : undefined;
+    const min = perTypeLg?.minRadius ?? lg.minRadius ?? DEFAULT_LIQUID_GLASS.minRadius;
+    const max = perTypeLg?.maxRadius ?? lg.maxRadius ?? DEFAULT_LIQUID_GLASS.maxRadius;
     p.radius = Math.random() * (max - min) + min;
     delete p.currentRadius;
     this.initBlob(p);
@@ -906,8 +942,11 @@ export class ParticleNetwork {
       if (particle.isChild) {
         particle.currentRadius = particle.radius;
       } else {
-        if (this.config.pulseEnabled) {
-          this.pulseAngle += this.config.pulseSpeed;
+        const tc = particle.typeConfig;
+        const doPulse = tc?.pulse ?? this.config.pulseEnabled;
+        if (doPulse) {
+          const speed = tc?.pulseSpeed ?? this.config.pulseSpeed;
+          this.pulseAngle += speed;
           const pulseScale = Math.sin(this.pulseAngle) * 0.5 + 1;
           particle.currentRadius = particle.radius * pulseScale;
         } else {
@@ -1136,7 +1175,9 @@ export class ParticleNetwork {
   }
 
   private draw3DFluidSphere(particle: Particle): void {
-    const lg = this.getLiquidGlassConfig();
+    const tc = particle.typeConfig;
+    const perTypeLg = tc && "liquidGlass" in tc && typeof tc.liquidGlass === "object" ? tc.liquidGlass : undefined;
+    const lg = perTypeLg ? { ...this.getLiquidGlassConfig(), ...perTypeLg } : this.getLiquidGlassConfig();
     const r = particle.currentRadius ?? particle.radius;
     if (r <= 0) return;
     if (!particle.blob) this.initBlob(particle);
@@ -1235,7 +1276,9 @@ export class ParticleNetwork {
         return;
       }
 
-      let opacity = this.config.particleOpacity;
+      const tc = particle.typeConfig;
+      const tcOpacity = tc && "opacity" in tc ? tc.opacity : undefined;
+      let opacity = tcOpacity ?? this.config.particleOpacity;
       if (this.config.depthEffectEnabled) {
         opacity *= 0.6 + 0.4 * particle.z;
       }
@@ -1254,8 +1297,9 @@ export class ParticleNetwork {
           this.ctx.drawImage(img, x, y, size, size);
         }
       } else if (particle.isChild && particle.width != null && particle.height != null) {
+        const color = (tc && "color" in tc ? tc.color : undefined) ?? defaultColor;
         this.ctx.globalAlpha = opacity;
-        this.ctx.fillStyle = defaultColor;
+        this.ctx.fillStyle = color;
         const w = particle.width;
         const h = particle.height;
         const br = particle.borderRadius ?? Math.min(w, h) / 2;
@@ -1265,8 +1309,9 @@ export class ParticleNetwork {
         this.ctx.roundRect(x, y, w, h, br);
         this.ctx.fill();
       } else {
+        const color = (tc && "color" in tc ? tc.color : undefined) ?? defaultColor;
         this.ctx.globalAlpha = opacity;
-        this.ctx.fillStyle = defaultColor;
+        this.ctx.fillStyle = color;
         this.ctx.beginPath();
         this.ctx.arc(particle.x, particle.y, r, 0, Math.PI * 2);
         this.ctx.fill();
