@@ -14,9 +14,10 @@ import {
   type ParticleNetworkConfig,
   type ChildParticleConfig,
   type ChildParticlePosition,
+  type LiquidGlassConfig,
 } from "./index";
 
-const ParticleNetworkContext = createContext<ParticleNetwork | null>(null);
+export const ParticleNetworkContext = createContext<ParticleNetwork | null>(null);
 
 export function useParticleNetwork(
   config?: Partial<ParticleNetworkConfig>
@@ -100,6 +101,12 @@ export interface ChildParticleProps {
   anchorForce?: number;
   /** Mouse influence multiplier (0-1). Default 0.1. */
   mouseInfluence?: number;
+  /** Opacity (0-1) for liquid glass. Only applies when liquidGlass is true. */
+  glassOpacity?: number;
+  /** Color (hex) for liquid glass. Only applies when liquidGlass is true. */
+  glassColor?: string;
+  /** Full liquid glass config override. Merged over global liquidGlass. */
+  liquidGlassConfig?: Partial<LiquidGlassConfig>;
   children?: ReactNode;
   style?: CSSProperties;
   className?: string;
@@ -126,6 +133,12 @@ export interface GlassChildParticleProps {
   anchorForce?: number;
   /** Mouse influence multiplier (0-1). Default 0.1. */
   mouseInfluence?: number;
+  /** Opacity (0-1) for the glass background. Default uses global liquidGlass.opacity. */
+  glassOpacity?: number;
+  /** Color (hex) for the glass background. Default uses global liquidGlass.color. */
+  glassColor?: string;
+  /** Full liquid glass config override. Merged over global liquidGlass. */
+  liquidGlassConfig?: Partial<LiquidGlassConfig>;
   children?: ReactNode;
   style?: CSSProperties;
   className?: string;
@@ -153,6 +166,9 @@ function BaseChildParticle({
   anchorForce,
   mouseInfluence,
   liquidGlass,
+  glassOpacity,
+  glassColor,
+  liquidGlassConfig,
   children,
   style,
   className,
@@ -164,7 +180,7 @@ function BaseChildParticle({
     if (!instance) return;
     instance.addChildParticle({
       id, x, y, radius, width, height, borderRadius, overflow,
-      anchorForce, mouseInfluence, liquidGlass,
+      anchorForce, mouseInfluence, liquidGlass, glassOpacity, glassColor, liquidGlassConfig,
     });
     setOverlayEl(instance.getChildOverlayElement(id));
     return () => {
@@ -177,9 +193,9 @@ function BaseChildParticle({
     if (!instance || !overlayEl) return;
     instance.updateChildParticle(id, {
       x, y, radius, width, height, borderRadius, overflow,
-      anchorForce, mouseInfluence, liquidGlass,
+      anchorForce, mouseInfluence, liquidGlass, glassOpacity, glassColor, liquidGlassConfig,
     });
-  }, [instance, id, x, y, radius, width, height, borderRadius, overflow, anchorForce, mouseInfluence, liquidGlass]);
+  }, [instance, id, x, y, radius, width, height, borderRadius, overflow, anchorForce, mouseInfluence, liquidGlass, glassOpacity, glassColor, liquidGlassConfig]);
 
   if (!overlayEl) return null;
 

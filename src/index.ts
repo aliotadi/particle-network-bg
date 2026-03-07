@@ -42,6 +42,8 @@ export interface LiquidGlassConfig {
   minRadius?: number;
   /** Maximum radius (px) for liquid glass particles (overrides root maxRadius). */
   maxRadius?: number;
+  /** Blob deformation speed multiplier (default 1). 0 = frozen, 2 = double speed. */
+  blobSpeed?: number;
 }
 
 export interface CircleTypeEntry {
@@ -103,6 +105,12 @@ export interface ChildParticleConfig {
   mouseInfluence?: number;
   /** Render as liquid glass particle. Default false. */
   liquidGlass?: boolean;
+  /** Opacity (0–1) for liquid glass child particles. Overrides global liquidGlass.opacity. */
+  glassOpacity?: number;
+  /** Color (hex) for liquid glass child particles. Overrides global liquidGlass.color. */
+  glassColor?: string;
+  /** Full liquid glass config override for child particles. Merged over global liquidGlass. */
+  liquidGlassConfig?: Partial<LiquidGlassConfig>;
 }
 
 /** Emitted position data for a child particle each frame. */
@@ -228,6 +236,8 @@ export interface Particle {
   overflow?: string;
   /** Per-type config entry (shallow overrides root config). */
   typeConfig?: ParticleTypeEntry;
+  /** Random phase offset (0–2π) for pulse animation. Makes particles pulse out of sync. */
+  pulsePhase?: number;
   /** Smoothed x for overlay positioning. */
   smoothX?: number;
   /** Smoothed y for overlay positioning. */
@@ -279,6 +289,7 @@ const DEFAULT_LIQUID_GLASS: Required<LiquidGlassConfig> = {
   shadowStrength: 0.4,
   secondaryReflection: 0.25,
   secondaryHighlightPosition: "bottom-right",
+  blobSpeed: 1,
   minRadius: 20,
   maxRadius: 40,
 };
@@ -459,7 +470,7 @@ export class ParticleNetwork {
 
       el.style.width = w + "px";
       el.style.height = h + "px";
-      el.style.transform = `translate(${px - w / 2}px, ${py - h / 2}px)`;
+      el.style.transform = `translate3d(${Math.round(px - w / 2)}px, ${Math.round(py - h / 2)}px, 0)`;
 
       if (isRect) {
         const br = particle.borderRadius ?? Math.min(w, h) / 2;
@@ -631,11 +642,18 @@ export class ParticleNetwork {
       if (!Array.isArray(config.particleTypes)) {
         throw new Error("particleTypes must be an array");
       }
-      if (!config.assets || typeof config.assets !== "object") {
+      let hasAssetEntries = false;
+      for (const entry of config.particleTypes) {
+        if (entry?.type === "asset") {
+          hasAssetEntries = true;
+          break;
+        }
+      }
+      if (hasAssetEntries && (!config.assets || typeof config.assets !== "object")) {
         throw new Error("assets map is required when using particleTypes with asset entries");
       }
       for (let i = 0; i < config.particleTypes.length; i++) {
-        const pt = config.particleTypes[i];
+        const pt = config.particleTypes[i] as ParticleTypeEntry | undefined;
         if (!pt || typeof pt.type !== "string") {
           throw new Error(`particleTypes[${i}].type must be "circle", "asset", or "liquidGlass"`);
         }
@@ -651,8 +669,9 @@ export class ParticleNetwork {
           if (typeof (pt as { asset?: string }).asset !== "string" || !(pt as { asset?: string }).asset) {
             throw new Error(`particleTypes[${i}].asset must be a non-empty string`);
           }
-          if (!config.assets[(pt as { asset: string }).asset]) {
-            throw new Error(`particleTypes[${i}]: asset "${(pt as { asset: string }).asset}" not found in assets`);
+          const assetKey = (pt as { asset: string }).asset;
+          if (!config.assets?.[assetKey]) {
+            throw new Error(`particleTypes[${i}]: asset "${assetKey}" not found in assets`);
           }
         }
       }
@@ -759,6 +778,7 @@ export class ParticleNetwork {
       delete p.assetId;
       delete p.liquidGlass;
       delete p.typeConfig;
+      delete p.pulsePhase;
     });
 
     if (particleTypes?.length) {
@@ -833,6 +853,17 @@ export class ParticleNetwork {
     if (!particleTypes?.length && (this.config.liquidGlassPercentage != null || this.config.liquidGlassCount != null)) {
       this.assignLiquidGlass();
     }
+
+    // Assign random pulse phase so particles don't pulse in sync
+    this.particles.forEach((p) => {
+      if (p.isChild) return;
+      const tc = p.typeConfig;
+      const doPulse = tc?.pulse ?? this.config.pulseEnabled;
+      if (doPulse) {
+        p.pulsePhase = Math.random() * Math.PI * 2;
+      }
+    });
+
     this.assignMouseBehavior();
   }
 
@@ -947,7 +978,8 @@ export class ParticleNetwork {
         if (doPulse) {
           const speed = tc?.pulseSpeed ?? this.config.pulseSpeed;
           this.pulseAngle += speed;
-          const pulseScale = Math.sin(this.pulseAngle) * 0.5 + 1;
+          const phase = particle.pulsePhase ?? 0;
+          const pulseScale = Math.sin(this.pulseAngle + phase) * 0.5 + 1;
           particle.currentRadius = particle.radius * pulseScale;
         } else {
           particle.currentRadius = particle.radius;
@@ -1176,7 +1208,20 @@ export class ParticleNetwork {
 
   private draw3DFluidSphere(particle: Particle): void {
     const tc = particle.typeConfig;
-    const perTypeLg = tc && "liquidGlass" in tc && typeof tc.liquidGlass === "object" ? tc.liquidGlass : undefined;
+    let perTypeLg = tc && "liquidGlass" in tc && typeof tc.liquidGlass === "object" ? tc.liquidGlass : undefined;
+    if (particle.isChild && particle.childId) {
+      const childConfig = this.childParticleConfigs.get(particle.childId);
+      if (childConfig) {
+        const overrides: Partial<LiquidGlassConfig> = {
+          ...(childConfig.liquidGlassConfig ?? {}),
+          ...(childConfig.glassOpacity != null && { opacity: childConfig.glassOpacity }),
+          ...(childConfig.glassColor != null && { color: childConfig.glassColor }),
+        };
+        if (Object.keys(overrides).length > 0) {
+          perTypeLg = { ...(perTypeLg ?? {}), ...overrides };
+        }
+      }
+    }
     const lg = perTypeLg ? { ...this.getLiquidGlassConfig(), ...perTypeLg } : this.getLiquidGlassConfig();
     const r = particle.currentRadius ?? particle.radius;
     if (r <= 0) return;
@@ -1186,17 +1231,25 @@ export class ParticleNetwork {
     const cy = particle.y;
     const isRect = particle.width != null && particle.height != null;
 
-    let opacity = (lg.opacity ?? DEFAULT_LIQUID_GLASS.opacity) * this.config.particleOpacity;
-    if (this.config.depthEffectEnabled) {
-      opacity *= 0.6 + 0.4 * particle.z;
+    const hasExplicitChildOpacity = particle.isChild && particle.childId && (() => {
+      const cfg = this.childParticleConfigs.get(particle.childId!);
+      return cfg?.glassOpacity != null || cfg?.liquidGlassConfig?.opacity != null;
+    })();
+    let opacity = lg.opacity ?? DEFAULT_LIQUID_GLASS.opacity;
+    if (!hasExplicitChildOpacity) {
+      opacity *= this.config.particleOpacity;
+      if (this.config.depthEffectEnabled) {
+        opacity *= 0.6 + 0.4 * particle.z;
+      }
     }
     if (opacity <= 0) return;
 
-    blob.rotation += blob.rotSpeed;
+    const blobSpeed = lg.blobSpeed ?? 1;
+    blob.rotation += blob.rotSpeed * blobSpeed;
     for (let m = 0; m < blob.phases.length; m++) {
-      blob.phases[m] += blob.phaseSpeeds[m];
+      blob.phases[m] += blob.phaseSpeeds[m] * blobSpeed;
     }
-    blob.hlAngle += blob.hlAngleSpeed;
+    blob.hlAngle += blob.hlAngleSpeed * blobSpeed;
     this.updateBlobMouse(particle);
 
     const color = lg.color ?? DEFAULT_LIQUID_GLASS.color;
@@ -1204,31 +1257,36 @@ export class ParticleNetwork {
     const baseG = parseInt(color.slice(3, 5), 16);
     const baseB = parseInt(color.slice(5, 7), 16);
     const shadowStr = lg.shadowStrength ?? DEFAULT_LIQUID_GLASS.shadowStrength;
+    const refl = (lg.reflectionStrength ?? DEFAULT_LIQUID_GLASS.reflectionStrength) / DEFAULT_LIQUID_GLASS.reflectionStrength;
 
     const gradR = isRect ? Math.max(particle.width!, particle.height!) / 2 : r;
     const hlDist = gradR * 0.35;
     const hlX = cx + Math.cos(blob.hlAngle) * hlDist;
     const hlY = cy + Math.sin(blob.hlAngle) * hlDist;
 
-    const lr = Math.min(255, baseR + Math.round((255 - baseR) * 0.55));
-    const lgr = Math.min(255, baseG + Math.round((255 - baseG) * 0.55));
-    const lb = Math.min(255, baseB + Math.round((255 - baseB) * 0.55));
+    const lr = Math.min(255, baseR + Math.round((255 - baseR) * 0.55 * refl));
+    const lgr = Math.min(255, baseG + Math.round((255 - baseG) * 0.55 * refl));
+    const lb = Math.min(255, baseB + Math.round((255 - baseB) * 0.55 * refl));
     const dr = Math.max(0, Math.round(baseR * (1 - shadowStr * 0.35)));
     const dg = Math.max(0, Math.round(baseG * (1 - shadowStr * 0.35)));
     const db = Math.max(0, Math.round(baseB * (1 - shadowStr * 0.35)));
 
     this.ctx.save();
+    this.ctx.globalAlpha = 1;
 
-    const grad = this.ctx.createRadialGradient(
-      hlX, hlY, gradR * 0.05,
-      cx, cy, gradR * 1.05
-    );
-    grad.addColorStop(0,    `rgba(${lr},${lgr},${lb}, ${opacity * 0.95})`);
-    grad.addColorStop(0.4,  `rgba(${baseR},${baseG},${baseB}, ${opacity * 0.8})`);
-    grad.addColorStop(0.8,  `rgba(${dr},${dg},${db}, ${opacity * 0.6})`);
-    grad.addColorStop(1,    `rgba(${dr},${dg},${db}, ${opacity * 0.25})`);
-
-    this.ctx.fillStyle = grad;
+    if (hasExplicitChildOpacity && opacity >= 0.99) {
+      this.ctx.fillStyle = `rgba(${baseR},${baseG},${baseB}, ${opacity})`;
+    } else {
+      const grad = this.ctx.createRadialGradient(
+        hlX, hlY, gradR * 0.05,
+        cx, cy, gradR * 1.05
+      );
+      grad.addColorStop(0,    `rgba(${lr},${lgr},${lb}, ${opacity * 0.95})`);
+      grad.addColorStop(0.4,  `rgba(${baseR},${baseG},${baseB}, ${opacity * 0.8})`);
+      grad.addColorStop(0.8,  `rgba(${dr},${dg},${db}, ${opacity * 0.6})`);
+      grad.addColorStop(1,    `rgba(${dr},${dg},${db}, ${opacity * 0.25})`);
+      this.ctx.fillStyle = grad;
+    }
 
     if (isRect) {
       const halfW = particle.width! / 2;

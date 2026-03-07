@@ -89,6 +89,8 @@ function App() {
 ```
 
 > **Note:** Config is applied on mount. The canvas resizes to the window. When gradients are enabled, a background `<div>` is automatically created behind the canvas for smooth CSS-based gradient rendering.
+>
+> Pulse animations are automatically phase-randomized so particles don't pulse in sync.
 
 ## Configuration
 
@@ -160,6 +162,7 @@ new ParticleNetwork(canvas, {
     secondaryHighlightPosition: "bottom-right",
     minRadius: 20,            // min size for liquid glass particles (overrides root minRadius)
     maxRadius: 40,            // max size for liquid glass particles (overrides root maxRadius)
+    blobSpeed: 1,             // blob deformation speed multiplier (0 = frozen, 2 = double speed)
   },
 });
 ```
@@ -344,7 +347,7 @@ function App() {
       </ChildParticle>
 
       {/* Liquid glass blob particle */}
-      <GlassChildParticle id="clock" x={600} y={400} radius={60}>
+      <GlassChildParticle id="clock" x={600} y={400} radius={60} glassColor="#ff6600" glassOpacity={0.8}>
         <span>🕐</span>
       </GlassChildParticle>
 
@@ -371,6 +374,9 @@ function App() {
 | `overflow`       | string    | `"hidden"` | CSS overflow for the child content container                |
 | `anchorForce`    | number    | `0.05`   | Spring force pulling back to anchor (0–1). Lower = more floaty |
 | `mouseInfluence` | number    | `0.1`    | Mouse influence multiplier (0–1). 0 = ignores mouse           |
+| `glassOpacity`   | number    | —        | Opacity (0–1) for liquid glass. Overrides global `liquidGlass.opacity` |
+| `glassColor`     | string    | —        | Color (hex) for liquid glass. Overrides global `liquidGlass.color` |
+| `liquidGlassConfig` | `Partial<LiquidGlassConfig>` | — | Full liquid glass config override, merged over global `liquidGlass` |
 | `children`       | ReactNode | —        | Content to render inside the particle                         |
 | `style`          | CSSProperties | —   | Style applied to the inner wrapper div                        |
 | `className`      | string    | —        | Class applied to the inner wrapper div                        |
@@ -391,7 +397,9 @@ network.addChildParticle({
   radius: 50,
   anchorForce: 0.05,
   mouseInfluence: 0.1,
-  liquidGlass: false,
+  liquidGlass: true,
+  glassOpacity: 0.7,                 // override global liquidGlass.opacity
+  glassColor: "#ff6600",             // override global liquidGlass.color
 });
 
 // Update its anchor (e.g. on scroll/resize)
@@ -436,6 +444,9 @@ interface ChildParticleConfig {
   anchorForce?: number;
   mouseInfluence?: number;
   liquidGlass?: boolean;
+  glassOpacity?: number;              // overrides global liquidGlass.opacity
+  glassColor?: string;                // overrides global liquidGlass.color
+  liquidGlassConfig?: Partial<LiquidGlassConfig>; // merged over global liquidGlass
 }
 
 interface ChildParticlePosition {

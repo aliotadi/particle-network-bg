@@ -783,6 +783,14 @@ function LiquidGlassConfigEditor({
         max={120}
         onChange={(v) => update("maxRadius", v)}
       />
+      <Slider
+        label="Blob Speed"
+        value={lg.blobSpeed ?? 1}
+        min={0}
+        max={3}
+        step={0.1}
+        onChange={(v) => update("blobSpeed", v)}
+      />
     </div>
   );
 }

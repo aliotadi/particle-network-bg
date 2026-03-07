@@ -21,6 +21,8 @@ export interface ChildParticleDef {
   anchorForce: number;
   mouseInfluence: number;
   overflow?: string;
+  glassOpacity?: number;
+  glassColor?: string;
 }
 
 /** A configured widget ready to be placed — position chosen by clicking canvas. */
@@ -89,6 +91,8 @@ interface AddFormProps {
 function AddForm({ onStartPlacement }: AddFormProps) {
   const [type, setType] = useState<WidgetType>("clock");
   const [glass, setGlass] = useState(true);
+  const [glassOpacity, setGlassOpacity] = useState(0.6);
+  const [glassColor, setGlassColor] = useState("#88ccff");
   const [anchorForce, setAnchorForce] = useState(0.04);
   const [mouseInfluence, setMouseInfluence] = useState(0.09);
 
@@ -106,6 +110,7 @@ function AddForm({ onStartPlacement }: AddFormProps) {
       glass,
       anchorForce,
       mouseInfluence,
+      ...(glass ? { glassOpacity, glassColor } : {}),
     });
   };
 
@@ -169,6 +174,33 @@ function AddForm({ onStartPlacement }: AddFormProps) {
           />
         </div>
       </div>
+
+      {/* Glass color & opacity — only when glass is on */}
+      {glass && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <label style={labelStyle}>Glass Color</label>
+            <input
+              type="color"
+              value={glassColor}
+              onChange={(e) => setGlassColor(e.target.value)}
+              style={{
+                width: 28, height: 22, border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: 5, background: "none", cursor: "pointer", padding: 0,
+              }}
+            />
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontFamily: "monospace" }}>
+              {glassColor.toUpperCase()}
+            </span>
+          </div>
+          <SliderRow
+            label="Glass Opacity"
+            value={glassOpacity}
+            min={0.05} max={1} step={0.05}
+            onChange={setGlassOpacity}
+          />
+        </>
+      )}
 
       {/* Sliders */}
       <SliderRow

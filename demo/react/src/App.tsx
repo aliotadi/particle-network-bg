@@ -66,6 +66,7 @@ const DEFAULT_CONFIG: Partial<ParticleNetworkConfig> = {
     shadowStrength: 0.4,
     minRadius: 20,
     maxRadius: 40,
+    blobSpeed: 1,
   },
 };
 
@@ -80,6 +81,7 @@ const DEFAULT_PARTICLES: ChildParticleDef[] = [
     x: 160, y: 210,
     radius: 65,
     glass: true, anchorForce: 0.04, mouseInfluence: 0.09,
+    glassColor: "#6366f1", glassOpacity: 0.7,
   },
   {
     id: "counter",
@@ -576,6 +578,8 @@ function ChildrenDemo({ editMode }: ChildrenDemoProps) {
               anchorForce={p.anchorForce}
               mouseInfluence={p.mouseInfluence}
               overflow={p.overflow}
+              glassOpacity={p.glassOpacity}
+              glassColor={p.glassColor}
               style={p.glass ? undefined : wrapperStyle}
             >
               <div style={{ position: "relative", width: "100%", height: "100%" }}>
